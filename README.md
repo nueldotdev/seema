@@ -21,6 +21,7 @@ supabase db push
 supabase functions deploy run-daily
 supabase functions deploy send-reminders
 supabase functions deploy mark-read
+supabase functions deploy research-now
 ```
 
 Get the project ref from the Supabase project URL (`https://<project-ref>.supabase.co`); the ref is the subdomain, not a key. Supabase supplies `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` inside Edge Functions, so do not create or upload your own copies.
@@ -61,6 +62,8 @@ The job checks each account's IANA timezone and configured local delivery time, 
 
 - The PWA shell is cached for quick opens. Browser storage is not used to queue captures offline; a failed network save is surfaced rather than appearing successful.
 - Share Target uses Android's GET text/title/url parameters to prefill the capture field.
+- The capture screen offers “Research … now” when pending captures exist. It researches and opens the digest in-app without sending an immediate email; the scheduled morning run still emails that day's digest.
+- `research-now` has gateway JWT verification disabled so browser CORS preflight can reach the handler; the function itself validates the Supabase access token with `auth.getUser` before accessing user data.
 - Resources are retained only when Gemini Search grounding metadata supplies a real HTTP(S) URL. Research failures are recorded individually and are shown in the digest.
 - Reminder emails are sent at least 24 hours after delivery for unopened digests. Reminder send claims are reset after a provider failure, so an unsuccessful attempt can be retried.
 - `mark-read` validates an HMAC-signed digest ID, records `opened_at`, and redirects to the in-app reader.

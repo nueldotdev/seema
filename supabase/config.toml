@@ -6,3 +6,6 @@ verify_jwt = false
 
 [functions.mark-read]
 verify_jwt = false
+
+[functions.research-now]
+verify_jwt = false

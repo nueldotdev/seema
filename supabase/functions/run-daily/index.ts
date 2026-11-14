@@ -3,6 +3,7 @@ import { corsHeaders, jsonResponse } from '../_shared/cors.ts'
 import { digestHtml, sendEmail } from '../_shared/email.ts'
 import { researchCapture } from '../_shared/research.ts'
 import { signDigestId } from '../_shared/signing.ts'
+import { localDateAndMinute, localMidnightAsUtc } from '../_shared/time.ts'
 
 interface UserSetting {
   user_id: string
@@ -16,59 +17,13 @@ interface CaptureRow {
   text: string
   created_at: string
   user_id: string
+  status?: string
+  result?: Record<string, unknown> | null
 }
 
 function isAuthorized(request: Request) {
   const secret = Deno.env.get('CRON_SECRET')
   return Boolean(secret && request.headers.get('Authorization') === `Bearer ${secret}`)
-}
-
-function localDateAndMinute(timezone: string, now: Date) {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(now)
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
-  const date = `${values.year}-${values.month}-${values.day}`
-  const currentMinute = Number(values.hour) * 60 + Number(values.minute)
-  return { date, currentMinute }
-}
-
-function localMidnightAsUtc(date: string, timezone: string) {
-  const [year, month, day] = date.split('-').map(Number)
-  const desiredUtc = Date.UTC(year, month - 1, day)
-  let candidate = desiredUtc
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  })
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const values = Object.fromEntries(formatter.formatToParts(new Date(candidate)).map((part) => [part.type, part.value]))
-    const formattedAsUtc = Date.UTC(
-      Number(values.year),
-      Number(values.month) - 1,
-      Number(values.day),
-      Number(values.hour),
-      Number(values.minute),
-      Number(values.second),
-    )
-    const adjustment = desiredUtc - formattedAsUtc
-    candidate += adjustment
-    if (adjustment === 0) break
-  }
-  return new Date(candidate).toISOString()
 }
 
 Deno.serve(async (request) => {
@@ -105,14 +60,18 @@ Deno.serve(async (request) => {
     const startAt = localMidnightAsUtc(previousDate, setting.timezone)
     const endAt = localMidnightAsUtc(local.date, setting.timezone)
 
-    const existing = await supabase.from('digests').select('id,emailed_at,status').eq('user_id', setting.user_id).eq('digest_date', previousDate).maybeSingle()
+    const existing = await supabase.from('digests')
+      .select('id,emailed_at,status,content')
+      .eq('user_id', setting.user_id)
+      .eq('digest_date', previousDate)
+      .maybeSingle()
     if (existing.error) {
       outcomes.push({ user_id: setting.user_id, status: 'lookup_failed' })
       console.error('Digest lookup failed:', existing.error.message)
       continue
     }
-    if (existing.data) {
-      outcomes.push({ user_id: setting.user_id, digest_id: existing.data.id, status: existing.data.emailed_at ? 'already_sent' : 'already_claimed' })
+    if (existing.data?.emailed_at) {
+      outcomes.push({ user_id: setting.user_id, digest_id: existing.data.id, status: 'already_sent' })
       continue
     }
 
@@ -129,25 +88,59 @@ Deno.serve(async (request) => {
       console.error('Capture lookup failed:', capturesError.message)
       continue
     }
-    if (!captures?.length) {
+    if (!captures?.length && !existing.data) {
       outcomes.push({ user_id: setting.user_id, status: 'no_captures' })
       continue
     }
 
-    const { data: digest, error: insertError } = await supabase.from('digests')
-      .insert({ user_id: setting.user_id, digest_date: previousDate, status: 'processing' })
-      .select('id')
-      .single()
-    if (insertError) {
-      if (insertError.code === '23505') outcomes.push({ user_id: setting.user_id, status: 'already_claimed' })
-      else {
-        outcomes.push({ user_id: setting.user_id, status: 'digest_create_failed' })
-        console.error('Digest create failed:', insertError.message)
+    let digestId: string
+    if (existing.data) {
+      if (existing.data.status === 'processing') {
+        outcomes.push({ user_id: setting.user_id, digest_id: existing.data.id, status: 'already_claimed' })
+        continue
       }
+      const { data: claimed, error: claimError } = await supabase.from('digests')
+        .update({ status: 'processing' })
+        .eq('id', existing.data.id)
+        .in('status', ['ready', 'failed'])
+        .is('emailed_at', null)
+        .select('id')
+        .maybeSingle()
+      if (claimError || !claimed) {
+        if (claimError) console.error('Existing digest claim failed:', claimError.message)
+        outcomes.push({ user_id: setting.user_id, digest_id: existing.data.id, status: 'already_claimed' })
+        continue
+      }
+      digestId = claimed.id
+    } else {
+      const { data: created, error: insertError } = await supabase.from('digests')
+        .insert({ user_id: setting.user_id, digest_date: previousDate, status: 'processing' })
+        .select('id')
+        .single()
+      if (insertError || !created) {
+        if (insertError?.code === '23505') outcomes.push({ user_id: setting.user_id, status: 'already_claimed' })
+        else {
+          if (insertError) console.error('Digest create failed:', insertError.message)
+          outcomes.push({ user_id: setting.user_id, status: 'digest_create_failed' })
+        }
+        continue
+      }
+      digestId = created.id
+    }
+
+    const { data: attached, error: attachedError } = await supabase.from('captures')
+      .select('id,text,created_at,user_id,status,result')
+      .eq('user_id', setting.user_id)
+      .eq('digest_id', digestId)
+    if (attachedError) {
+      await supabase.from('digests').update({ status: 'failed' }).eq('id', digestId)
+      outcomes.push({ user_id: setting.user_id, digest_id: digestId, status: 'attached_capture_lookup_failed' })
+      console.error('Attached capture lookup failed:', attachedError.message)
       continue
     }
 
-    const researched = await Promise.all((captures as CaptureRow[]).map(async (capture) => {
+    const pending = (captures ?? []) as CaptureRow[]
+    const researched = await Promise.all(pending.map(async (capture) => {
       try {
         const result = await researchCapture(capture.text, setting.preset_context)
         return { ...capture, status: 'researched', result }
@@ -157,59 +150,73 @@ Deno.serve(async (request) => {
       }
     }))
 
-    const { error: saveCaptureError } = await supabase.from('captures').upsert(
-      researched.map((capture) => ({
-        id: capture.id,
-        user_id: capture.user_id,
-        text: capture.text,
-        created_at: capture.created_at,
-        status: capture.status,
-        result: capture.result,
-        digest_id: digest.id,
-      })),
-      { onConflict: 'id' },
-    )
-    if (saveCaptureError) {
-      await supabase.from('digests').update({ status: 'failed' }).eq('id', digest.id)
-      outcomes.push({ user_id: setting.user_id, digest_id: digest.id, status: 'save_failed' })
-      console.error('Capture result save failed:', saveCaptureError.message)
-      continue
+    const allCaptures = new Map<string, { id: string; text: string; status: string; result: Record<string, unknown> | null }>()
+    for (const item of Array.isArray(existing.data?.content) ? existing.data.content : []) {
+      if (item && typeof item.id === 'string') allCaptures.set(item.id, item)
+    }
+    for (const capture of attached ?? []) {
+      allCaptures.set(capture.id, { id: capture.id, text: capture.text, status: capture.status, result: capture.result })
     }
 
-    const content = researched.map(({ id, text, status, result }) => ({ id, text, status, result }))
-    const { error: updateDigestError } = await supabase.from('digests').update({ content, status: 'ready' }).eq('id', digest.id)
+    if (researched.length) {
+      const { error: saveCaptureError } = await supabase.from('captures').upsert(
+        researched.map((capture) => ({
+          id: capture.id,
+          user_id: capture.user_id,
+          text: capture.text,
+          created_at: capture.created_at,
+          status: capture.status,
+          result: capture.result,
+          digest_id: digestId,
+        })),
+        { onConflict: 'id' },
+      )
+      if (saveCaptureError) {
+        await supabase.from('digests').update({ status: 'failed' }).eq('id', digestId)
+        outcomes.push({ user_id: setting.user_id, digest_id: digestId, status: 'save_failed' })
+        console.error('Capture result save failed:', saveCaptureError.message)
+        continue
+      }
+      for (const capture of researched) {
+        allCaptures.set(capture.id, { id: capture.id, text: capture.text, status: capture.status, result: capture.result })
+      }
+    }
+
+    const content = [...allCaptures.values()]
+    const { error: updateDigestError } = await supabase.from('digests').update({ content, status: 'ready' }).eq('id', digestId)
     if (updateDigestError) {
-      outcomes.push({ user_id: setting.user_id, digest_id: digest.id, status: 'digest_save_failed' })
+      await supabase.from('digests').update({ status: 'failed' }).eq('id', digestId)
+      outcomes.push({ user_id: setting.user_id, digest_id: digestId, status: 'digest_save_failed' })
       console.error('Digest content save failed:', updateDigestError.message)
       continue
     }
 
     const { data: userData, error: userError } = await supabase.auth.admin.getUserById(setting.user_id)
     if (userError) {
-      outcomes.push({ user_id: setting.user_id, digest_id: digest.id, status: 'email_lookup_failed' })
+      outcomes.push({ user_id: setting.user_id, digest_id: digestId, status: 'email_lookup_failed' })
       console.error('Auth user lookup failed:', userError.message)
       continue
     }
     const email = userData.user.email
     if (!email) {
-      outcomes.push({ user_id: setting.user_id, digest_id: digest.id, status: 'missing_email' })
+      outcomes.push({ user_id: setting.user_id, digest_id: digestId, status: 'missing_email' })
       continue
     }
     const tokenSecret = Deno.env.get('MARK_READ_SECRET')
     if (!tokenSecret) return jsonResponse({ error: 'MARK_READ_SECRET must be configured' }, 500)
-    const token = await signDigestId(digest.id, tokenSecret)
-    const readUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/mark-read?id=${encodeURIComponent(digest.id)}&token=${token}`
+    const token = await signDigestId(digestId, tokenSecret)
+    const readUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/mark-read?id=${encodeURIComponent(digestId)}&token=${token}`
     try {
       await sendEmail({
         to: email,
         subject: `Your Seema digest for ${previousDate}`,
         html: digestHtml(content, readUrl),
       })
-      const { error: emailUpdateError } = await supabase.from('digests').update({ emailed_at: new Date().toISOString() }).eq('id', digest.id)
+      const { error: emailUpdateError } = await supabase.from('digests').update({ emailed_at: new Date().toISOString() }).eq('id', digestId)
       if (emailUpdateError) throw emailUpdateError
-      outcomes.push({ user_id: setting.user_id, digest_id: digest.id, status: 'sent' })
+      outcomes.push({ user_id: setting.user_id, digest_id: digestId, status: 'sent' })
     } catch (error) {
-      outcomes.push({ user_id: setting.user_id, digest_id: digest.id, status: 'email_failed' })
+      outcomes.push({ user_id: setting.user_id, digest_id: digestId, status: 'email_failed' })
       console.error('Digest email failed:', error)
     }
   }
