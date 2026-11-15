@@ -94,16 +94,47 @@ export default function CapturePage() {
     if (!supabase || researching) return
     setResearching(true)
     setResearchError('')
-    const { data, error } = await supabase.functions.invoke<{ status?: string; digest_id?: string; error?: string }>('research-now', {
-      body: {},
-    })
-    setResearching(false)
-    if (error) {
-      console.error('Immediate research failed:', error.message)
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    if (sessionError || !session) {
+      setResearching(false)
+      setResearchError('Your sign-in session expired. Please sign in again.')
+      if (sessionError) console.error('Unable to get session for research:', sessionError.message)
+      return
+    }
+
+    let response: Response
+    try {
+      response = await fetch('/api/research-now', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({}),
+      })
+    } catch (requestError) {
+      setResearching(false)
+      console.error('Immediate research request failed:', requestError)
       setResearchError('Couldn’t prepare your digest right now. Please try again in a moment.')
       return
     }
-    if (data?.digest_id) {
+
+    let data: { status?: string; digest_id?: string; error?: string }
+    try {
+      data = await response.json() as { status?: string; digest_id?: string; error?: string }
+    } catch (parseError) {
+      setResearching(false)
+      console.error('Immediate research returned an invalid response:', parseError)
+      setResearchError('The server returned an unexpected response. Please try again in a moment.')
+      return
+    }
+    setResearching(false)
+    if (!response.ok) {
+      console.error('Immediate research failed:', data.error ?? response.statusText)
+      setResearchError(data.error ?? 'Couldn’t prepare your digest right now. Please try again in a moment.')
+      return
+    }
+    if (data.digest_id) {
       navigate(`/digests/${data.digest_id}`)
       return
     }

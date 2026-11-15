@@ -2,71 +2,86 @@
 
 A quiet, mobile-first study companion: save a thought in a few seconds, then get a researched digest by email the next morning.
 
-## Run the PWA
+## Architecture
+
+- **Vercel** hosts the Vite PWA and Node.js API functions in `api/`.
+- **Supabase** provides Postgres, Auth, and row-level security. No Supabase Edge Functions are required by the current app.
+- **Tavily Search** supplies research sources, **Gemini** writes explanations, and the **Gmail API** sends digests/reminders.
+
+## Local development
 
 1. Install Node.js 20.19+ and run `npm install`.
-2. Create a Supabase project. In **Authentication → URL Configuration**, set the site URL to your deployed app origin and add your local URL (for example `http://localhost:5173`) to the redirect allow list.
-3. Copy `.env.example` to `.env.local` and set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from the Supabase project's API keys.
-4. Apply `supabase/migrations/20261114000000_initial_schema.sql` to the project, then run `npm run dev`.
+2. Copy `.env.example` to `.env.local`; fill in the client variables and server-only variables described below.
+3. Run `npx vercel login` and `npx vercel link` once, then use `npm run dev:vercel` to run the PWA and Vercel API functions together locally. `npm run dev` starts only Vite, so `/api/*` backend routes will not be available in that mode.
+4. In Supabase **Authentication → URL Configuration**, allow your local Vercel dev URL (usually `http://localhost:3000`) and the deployed app URL.
 
-The client uses only the Supabase publishable key. Never put `VITE_SUPABASE_SECRET_KEY` or the service-role key in the client environment; secret keys belong only in Supabase Edge Function secrets. All application tables have RLS enabled; authenticated users can only read or modify their own rows. Email magic links require email delivery to be configured in Supabase Auth.
+The browser only receives `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Never use a `VITE_` prefix for the Supabase secret key or any provider credentials.
 
-## Edge Function secrets and deployment
+## Supabase setup
 
-Link the Supabase CLI to the project, apply the migration, then deploy the functions:
+Apply the migrations in order. If the initial schema was already run in the Dashboard, make sure the CLI migration history is repaired before pushing new migrations:
 
 ```sh
-supabase link --project-ref <project-ref>
-supabase db push
-supabase functions deploy run-daily
-supabase functions deploy send-reminders
-supabase functions deploy mark-read
-supabase functions deploy research-now
+npx supabase link --project-ref <project-ref>
+npx supabase migration list --remote
+# Only if the initial schema was already run in SQL Editor but is missing from remote history:
+npx supabase migration repair --status applied 20261114000000 --remote
+npx supabase db push
 ```
 
-Get the project ref from the Supabase project URL (`https://<project-ref>.supabase.co`); the ref is the subdomain, not a key. Supabase supplies `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` inside Edge Functions, so do not create or upload your own copies.
+`20261115090000_disable_supabase_cron.sql` disables the old Supabase `pg_cron` dispatcher, so it does not continue calling the retired Edge Functions. Apply this migration **before enabling the replacement external schedule** to avoid duplicate digest emails. The existing schema migration creates the tables and owner-scoped RLS policies.
 
-Set these Edge Function secrets in **Supabase Dashboard → Edge Functions → Secrets**. For `CRON_SECRET` and `MARK_READ_SECRET`, generate separate random values locally (run the command twice in PowerShell; keep the output private):
+Create a Supabase **secret API key** in Project Settings → API Keys. It is a backend credential, not a browser key.
+
+## Vercel environment variables
+
+Add these in **Vercel → Project → Settings → Environment Variables**. For local `vercel dev`, put them in the ignored `.env.local` file.
+
+| Variable | Purpose |
+| --- | --- |
+| `VITE_SUPABASE_URL` | Supabase project URL used by the PWA |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key used by the PWA |
+| `SUPABASE_URL` | Same project URL, for server API functions |
+| `SUPABASE_SECRET_KEY` | Supabase secret API key; server-only. `SUPABASE_SERVICE_ROLE_KEY` is accepted as a legacy alternative |
+| `TAVILY_API_KEY` | Tavily web search |
+| `GEMINI_API_KEY` | Gemini text generation |
+| `GEMINI_MODEL` | Model identifier, e.g. `gemini-2.5-flash` |
+| `GOOGLE_CLIENT_ID` | OAuth client for the Gmail account that sends Seema mail |
+| `GOOGLE_CLIENT_SECRET` | Secret for that OAuth client |
+| `GOOGLE_REFRESH_TOKEN` | Offline OAuth token with `gmail.send` scope |
+| `CRON_SECRET` | Random bearer secret protecting the scheduled endpoint |
+| `MARK_READ_SECRET` | Separate random HMAC key for signed read links |
+| `APP_URL` | Public app origin, e.g. `https://your-project.vercel.app`, without a trailing slash |
+
+Generate separate values for `CRON_SECRET` and `MARK_READ_SECRET`:
 
 ```powershell
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
-| Secret | Purpose |
-| --- | --- |
-| `CRON_SECRET` | Bearer token used only by scheduled function calls |
-| `MARK_READ_SECRET` | HMAC key for signed email mark-as-read links |
-| `GEMINI_API_KEY` | Create an API key in Google AI Studio |
-| `GEMINI_MODEL` | Model identifier supported by your Gemini API project, for example `gemini-2.5-flash` |
-| `GOOGLE_CLIENT_ID` | OAuth client ID for the Google account that will send Seema emails |
-| `GOOGLE_CLIENT_SECRET` | Secret for that OAuth client |
-| `GOOGLE_REFRESH_TOKEN` | Offline OAuth refresh token authorized for the `gmail.send` scope |
-| `APP_URL` | Public origin where the PWA is hosted, without a trailing slash; `mark-read` redirects here |
+Set `APP_URL` to the Vercel deployment origin and add that origin to Supabase Auth's allowed redirect URLs. Gmail API sends as the Google account that authorized the `gmail.send` scope. OAuth apps left in Testing can have refresh tokens expire after seven days.
 
-### Set up Google email sending (no custom domain needed)
+## Deploy and schedule
 
-Seema sends digest and reminder mail with the Gmail API over HTTPS, using the Google account authorized by the refresh token. It does not use SMTP or Resend. Enable the **Gmail API** in a Google Cloud project, configure the OAuth consent screen, and create a **Web application** OAuth client with `https://developers.google.com/oauthplayground` as an authorized redirect URI. In the [OAuth 2.0 Playground](https://developers.google.com/oauthplayground/), open its settings, enable **Use your own OAuth credentials**, and enter that client ID and secret. Authorize `https://www.googleapis.com/auth/gmail.send`, exchange the authorization code, and copy the returned refresh token. Add the client ID, client secret, and refresh token as the three `GOOGLE_*` Edge Function secrets above. The sending address will be the Google account that granted consent.
+Connect the repository to Vercel and deploy. Vercel builds the Vite app and automatically deploys the Node API functions from `api/`. Deploy again after changing environment variables.
 
-Keep all Google OAuth values in Edge Function secrets, never in `.env.local` or `VITE_` variables. Google OAuth consent/testing configuration can cause a refresh token to expire (for external apps left in Testing, tokens typically expire after seven days); publish/configure the consent screen appropriately for ongoing use. Google may also impose Gmail sending quotas. The email's mark-read link calls the Supabase Edge Function URL; the function then redirects to `APP_URL`.
+Vercel's Hobby plan only allows a cron to run once per day, but Seema checks individual time zones and delivery times every 15 minutes. Configure an external scheduler (for example cron-job.org) to call:
 
-The migration installs `pg_cron` and `pg_net` and schedules a 15-minute dispatcher. Add two Supabase Vault secrets before relying on the schedule:
-
-```sql
-select vault.create_secret('https://<project-ref>.supabase.co', 'project_url');
-select vault.create_secret('<same-value-as-CRON_SECRET>', 'cron_secret');
+```text
+GET https://YOUR_APP_URL/api/cron/run-daily
 ```
 
-The job checks each account's IANA timezone and configured local delivery time, gathers the previous local calendar day's pending captures, researches each independently, and sends one digest. Empty days are skipped. The unique `(user_id, digest_date)` constraint prevents concurrent scheduled runs from creating multiple digests for a day.
+Set its `Authorization` header to `Bearer <the same CRON_SECRET from Vercel>` and run every 15 minutes. The endpoint processes due digests and reminders; requests without the matching secret are rejected. An eligible digest sends an actual email.
 
 ## Product notes
 
-- The PWA shell is cached for quick opens. Browser storage is not used to queue captures offline; a failed network save is surfaced rather than appearing successful.
-- Share Target uses Android's GET text/title/url parameters to prefill the capture field.
-- The capture screen offers “Research … now” when pending captures exist. It researches and opens the digest in-app without sending an immediate email; the scheduled morning run still emails that day's digest.
-- `research-now` has gateway JWT verification disabled so browser CORS preflight can reach the handler; the function itself validates the Supabase access token with `auth.getUser` before accessing user data.
-- Resources are retained only when Gemini Search grounding metadata supplies a real HTTP(S) URL. Research failures are recorded individually and are shown in the digest.
-- Reminder emails are sent at least 24 hours after delivery for unopened digests. Reminder send claims are reset after a provider failure, so an unsuccessful attempt can be retried.
-- `mark-read` validates an HMAC-signed digest ID, records `opened_at`, and redirects to the in-app reader.
+- The PWA shell is cached for quick opens; capture submission requires a network connection.
+- Android Share Target prefills the capture field.
+- “Research … now” researches today's pending captures and opens the digest in-app without sending an email.
+- Research is limited to three captures at a time to avoid exhausting provider quotas and function resources.
+- Tavily supplies search results; Gemini uses their snippets to write explanations. Resource links are always mapped to Tavily-returned URLs.
+- The scheduled function researches the previous local calendar day, sends one email digest, and reminds unopened digests after 24 hours.
+- The `/api/research-now` route validates the signed-in Supabase user before accessing their data. `/api/mark-read` validates its HMAC link before marking the digest opened.
 
 ## Checks
 
