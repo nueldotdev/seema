@@ -17,6 +17,10 @@ A quiet, mobile-first study companion: save a thought in a few seconds, then get
 
 The browser only receives `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Never use a `VITE_` prefix for the Supabase secret key or any provider credentials.
 
+### Local demo without sign-in
+
+For a UI demo without Supabase credentials, set `VITE_LOCAL_DEMO=true` in `.env.local` and run `npm run dev` (Vite). This works only on `localhost`/`127.0.0.1` in development mode; it is disabled in production builds and on deployed hosts. Demo captures, settings, and sample digests are stored only in that browser's local storage. Research previews are illustrative and do not call AI providers or send emails. Remove the setting or set it to `false` to return to normal sign-in.
+
 ## Supabase setup
 
 Apply the migrations in order. If the initial schema was already run in the Dashboard, make sure the CLI migration history is repaired before pushing new migrations:
@@ -77,6 +81,7 @@ Set its `Authorization` header to `Bearer <the same CRON_SECRET from Vercel>` an
 
 - The PWA shell is cached for quick opens; capture submission requires a network connection.
 - Android Share Target prefills the capture field.
+- The Topics page lists topics from ready digests and supports searching topic text and explanations.
 - “Research … now” researches today's pending captures and opens the digest in-app without sending an email.
 - Research is limited to three captures at a time to avoid exhausting provider quotas and function resources.
 - Tavily supplies search results; Gemini uses their snippets to write explanations. Resource links are always mapped to Tavily-returned URLs.

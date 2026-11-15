@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { ArrowUp, Check, LogOut, Sparkles } from 'lucide-react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
+import { createDemoDigest, getDemoPendingCount, saveDemoCapture } from '../lib/demo'
 
 export default function CapturePage() {
+  const { demoMode } = useAuth()
   const [text, setText] = useState('')
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [message, setMessage] = useState('')
@@ -25,6 +28,15 @@ export default function CapturePage() {
   useEffect(() => {
     let active = true
     async function loadPendingCount() {
+      if (demoMode) {
+        try {
+          setPendingCount(getDemoPendingCount())
+        } catch (error) {
+          console.error('Unable to load local demo captures:', error)
+          setResearchError('Couldn’t load local demo data. Check browser storage and try again.')
+        }
+        return
+      }
       if (!supabase) return
       const { data: settings, error: settingsError } = await supabase.from('settings')
         .select('timezone')
@@ -66,14 +78,32 @@ export default function CapturePage() {
     }
     void loadPendingCount()
     return () => { active = false }
-  }, [])
+  }, [demoMode])
 
   async function capture(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const captureText = text.trim()
-    if (!captureText || !supabase) return
+    if (!captureText || (!supabase && !demoMode)) return
     setStatus('sending')
     setMessage('')
+    if (demoMode) {
+      try {
+        saveDemoCapture(captureText)
+        setText('')
+        setPendingCount((count) => count + 1)
+        setResearchError('')
+        setStatus('sent')
+        setMessage('Saved in this browser’s local demo.')
+        window.setTimeout(() => setStatus('idle'), 2600)
+        inputRef.current?.focus()
+      } catch (error) {
+        setStatus('error')
+        setMessage('That didn’t save. Check browser storage and try again.')
+        console.error('Local demo capture save failed:', error)
+      }
+      return
+    }
+    if (!supabase) return
     const { error } = await supabase.from('captures').insert({ text: captureText })
     if (error) {
       setStatus('error')
@@ -91,6 +121,21 @@ export default function CapturePage() {
   }
 
   async function researchNow() {
+    if (demoMode) {
+      try {
+        const digestId = createDemoDigest()
+        if (digestId) {
+          setPendingCount(0)
+          navigate(`/digests/${digestId}`)
+        } else {
+          setResearchError('No saved thoughts are waiting to be previewed.')
+        }
+      } catch (error) {
+        console.error('Local demo digest creation failed:', error)
+        setResearchError('Couldn’t create a local preview. Check browser storage and try again.')
+      }
+      return
+    }
     if (!supabase || researching) return
     setResearching(true)
     setResearchError('')
@@ -143,6 +188,7 @@ export default function CapturePage() {
   }
 
   async function signOut() {
+    if (demoMode) return
     if (!supabase) return
     const { error } = await supabase.auth.signOut()
     if (error) console.error('Sign-out failed:', error.message)
@@ -150,17 +196,15 @@ export default function CapturePage() {
 
   return (
     <main className="capture-shell">
-      <AppHeader />
+      <AppHeader showDigests showTopics />
       <section className="capture-content">
-        <div className="eyebrow"><span className="eyebrow-line" /> A quieter kind of studying</div>
-        <h1>What came up<br />that you want to <em>understand?</em></h1>
-        <p className="intro-copy">Leave it here for tomorrow, or make a digest from today’s thoughts now.</p>
+        <h1>What came up<em>?</em></h1>
+        <p className="intro-copy">Save a question now. Come back to a clear answer later.</p>
         <form className="capture-form" onSubmit={capture}>
-          <label htmlFor="capture">Your thought, exactly as it is</label>
           <div className="capture-input-wrap">
-            <textarea ref={inputRef} id="capture" rows={4} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} placeholder="A word, a question, a half-formed thought…" />
+            <textarea ref={inputRef} id="capture" rows={3} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} placeholder="Type a topic or question…" aria-label="Your thought" />
             <div className="capture-form-footer">
-              <span className="character-count">{text.length > 0 ? `${text.length} / 2,000` : 'Just type and let it go'}</span>
+              <span className="character-count">{text.length > 0 ? `${text.length} / 2,000` : 'Save it for later'}</span>
               <button className="send-button" type="submit" disabled={!text.trim() || status === 'sending'} aria-label="Save thought">
                 {status === 'sending' ? <span className="button-spinner" /> : status === 'sent' ? <Check size={19} /> : <ArrowUp size={19} />}
               </button>
@@ -172,17 +216,16 @@ export default function CapturePage() {
           <div className="research-now">
             <button className="research-now-button" type="button" onClick={researchNow} disabled={researching}>
               {researching ? <span className="button-spinner" /> : <Sparkles size={16} />}
-              {researching ? 'Looking into it…' : `Research ${pendingCount} saved ${pendingCount === 1 ? 'thought' : 'thoughts'} now`}
+              {demoMode ? 'Preview saved thoughts' : researching ? 'Looking into it…' : `Research ${pendingCount} saved ${pendingCount === 1 ? 'thought' : 'thoughts'} now`}
             </button>
-            <p>Your digest will open here. The morning email still arrives at your usual time.</p>
+            <p>{demoMode ? 'Creates a local preview only. No live research or email is sent.' : 'Your digest will open here. The morning email still arrives at your usual time.'}</p>
           </div>
         )}
         {researchError && <p className="form-error research-feedback" role="alert">{researchError}</p>}
       </section>
-      <footer className="capture-footer">
-        <Link to="/digests">Your digests <span aria-hidden="true">↗</span></Link>
+      {!demoMode && <footer className="capture-footer">
         <button className="quiet-button" onClick={signOut} aria-label="Sign out"><LogOut size={15} /> Sign out</button>
-      </footer>
+      </footer>}
     </main>
   )
 }

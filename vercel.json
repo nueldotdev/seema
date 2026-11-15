@@ -1,6 +1,7 @@
 {
   "rewrites": [
     { "source": "/digests/:path*", "destination": "/index.html" },
+    { "source": "/topics", "destination": "/index.html" },
     { "source": "/settings", "destination": "/index.html" }
   ]
 }

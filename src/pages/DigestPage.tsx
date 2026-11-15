@@ -4,12 +4,15 @@ import { Link, useParams } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import { supabase } from '../lib/supabase'
 import type { Digest, Capture } from '../lib/types'
+import { useAuth } from '../lib/AuthContext'
+import { getDemoDigest, markDemoDigestOpened } from '../lib/demo'
 
 function formatDate(date: string) {
   return new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).format(new Date(`${date}T12:00:00`))
 }
 
 export default function DigestPage() {
+  const { demoMode } = useAuth()
   const { id } = useParams()
   const [digest, setDigest] = useState<Digest | null>(null)
   const [loading, setLoading] = useState(true)
@@ -18,6 +21,18 @@ export default function DigestPage() {
   useEffect(() => {
     let active = true
     async function load() {
+      if (demoMode) {
+        try {
+          const demoDigest = id ? getDemoDigest(id) : null
+          if (demoDigest) setDigest(markDemoDigestOpened(demoDigest.id))
+          else setError('This demo digest couldn’t be found.')
+        } catch (loadError) {
+          setError('Local demo digest couldn’t be loaded.')
+          console.error('Local demo digest load failed:', loadError)
+        }
+        setLoading(false)
+        return
+      }
       if (!supabase || !id) return
       const { data, error: queryError } = await supabase.from('digests').select('id,digest_date,content,created_at,emailed_at,opened_at,reminder_sent_at').eq('id', id).eq('status', 'ready').single()
       if (!active) return
@@ -39,7 +54,7 @@ export default function DigestPage() {
     }
     void load()
     return () => { active = false }
-  }, [id])
+  }, [demoMode, id])
 
   if (loading) return <main className="page-shell"><AppHeader backTo="/digests" backLabel="All digests" /><div className="reader-loading"><span className="loading-dot" /></div></main>
   if (!digest) return <main className="page-shell"><AppHeader backTo="/digests" backLabel="All digests" /><div className="reader-error"><h1>{error || 'Digest not found.'}</h1><Link to="/digests" className="inline-link">Back to your digests <ArrowUpRight size={15} /></Link></div></main>
@@ -50,9 +65,9 @@ export default function DigestPage() {
     <main className="page-shell reader-shell">
       <AppHeader backTo="/digests" backLabel="All digests" />
       <article className="reader-content">
-        <div className="eyebrow"><span className="eyebrow-line" /> Your morning reading</div>
         <time className="reader-date">{formatDate(digest.digest_date)}</time>
-        <h1>A little more<br />room to <em>understand.</em></h1>
+        <h1>Your digest</h1>
+        <p className="intro-copy">The topics you saved, researched and ready to read.</p>
         {error && <p className="form-error reader-notice" role="status">{error}</p>}
         <div className="article-divider" />
         {items.map((item, index) => (

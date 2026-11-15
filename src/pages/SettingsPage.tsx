@@ -4,6 +4,8 @@ import AppHeader from '../components/AppHeader'
 import { useAuth } from '../lib/AuthContext'
 import { supabase } from '../lib/supabase'
 import type { UserSettings } from '../lib/types'
+import { isLocalDemoMode } from '../lib/AuthContext'
+import { getDemoSettings, saveDemoSettings } from '../lib/demo'
 
 const DEFAULT_SETTINGS: UserSettings = {
   preset_context: 'JUPEB level. Explain simply and clearly, using a warm and encouraging tone.',
@@ -22,6 +24,16 @@ export default function SettingsPage() {
   useEffect(() => {
     let active = true
     async function load() {
+      if (isLocalDemoMode) {
+        try {
+          setSettings(getDemoSettings())
+        } catch (loadError) {
+          setError('Local demo settings couldn’t be loaded.')
+          console.error('Local demo settings load failed:', loadError)
+        }
+        setLoading(false)
+        return
+      }
       if (!supabase) return
       const { data, error: queryError } = await supabase.from('settings').select('preset_context,delivery_time,timezone').maybeSingle()
       if (!active) return
@@ -45,10 +57,22 @@ export default function SettingsPage() {
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!supabase) return
+    if (!supabase && !isLocalDemoMode) return
     setSaving(true)
     setMessage('')
     setError('')
+    if (isLocalDemoMode) {
+      try {
+        saveDemoSettings(settings)
+        setMessage('Saved in this browser’s local demo.')
+      } catch (saveError) {
+        setError('Local demo settings couldn’t be saved.')
+        console.error('Local demo settings save failed:', saveError)
+      }
+      setSaving(false)
+      return
+    }
+    if (!supabase) return
     const { error: saveError } = await supabase.from('settings').upsert(settings)
     setSaving(false)
     if (saveError) {
@@ -60,6 +84,7 @@ export default function SettingsPage() {
   }
 
   async function signOut() {
+    if (isLocalDemoMode) return
     if (!supabase) return
     const { error: signOutError } = await supabase.auth.signOut()
     if (signOutError) console.error('Sign-out failed:', signOutError.message)
@@ -69,9 +94,8 @@ export default function SettingsPage() {
     <main className="page-shell">
       <AppHeader backTo="/" backLabel="Capture" />
       <section className="settings-content">
-        <div className="eyebrow"><span className="eyebrow-line" /> Make it yours</div>
-        <h1>A little context<br />goes a <em>long way.</em></h1>
-        <p className="intro-copy">Tell us how you like to learn. We’ll use this for the next set of things you save.</p>
+        <h1>Settings</h1>
+        <p className="intro-copy">Set your learning preferences and delivery time.</p>
         {loading ? <div className="list-loading"><span className="loading-dot" /></div> : (
           <form className="settings-form" onSubmit={save}>
             <label htmlFor="context">Your learning context</label>
@@ -87,7 +111,7 @@ export default function SettingsPage() {
             <button className="primary-button settings-save" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save my preferences'}</button>
           </form>
         )}
-        <div className="account-row"><div><span className="field-hint">Signed in as</span><p>{session?.user.email}</p></div><button className="quiet-button" onClick={signOut}><LogOut size={15} /> Sign out</button></div>
+        <div className="account-row"><div><span className="field-hint">{isLocalDemoMode ? 'Demo mode' : 'Signed in as'}</span><p>{isLocalDemoMode ? 'No account is connected' : session?.user.email}</p></div>{!isLocalDemoMode && <button className="quiet-button" onClick={signOut}><LogOut size={15} /> Sign out</button>}</div>
       </section>
     </main>
   )
