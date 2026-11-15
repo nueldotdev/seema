@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { getAdminClient, requestMethod, type VercelRequest, type VercelResponse } from '../backend/server'
+import { getAdminClient, requestMethod, type VercelRequest, type VercelResponse } from '../backend/server.js'
 
 export default async function markRead(request: VercelRequest, response: VercelResponse) {
   if (!requestMethod(request, response, ['GET'])) return

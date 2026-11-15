@@ -1,7 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { localMidnightAsUtc, nextDate, todayInTimezone, type VercelRequest, type VercelResponse } from '../backend/server'
-import { mapWithConcurrency, researchCapture } from '../backend/research'
-import { requireUser, requestMethod } from '../backend/server'
+import { localMidnightAsUtc, nextDate, requireUser, requestMethod, todayInTimezone, type VercelRequest, type VercelResponse } from '../backend/server.js'
+import { mapWithConcurrency, researchCapture } from '../backend/research.js'
 
 export const maxDuration = 60
 

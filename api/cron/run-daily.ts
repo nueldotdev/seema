@@ -1,6 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto'
-import { digestHtml, sendEmail } from '../../backend/email'
-import { mapWithConcurrency, researchCapture } from '../../backend/research'
+import { digestHtml, sendEmail } from '../../backend/email.js'
+import { mapWithConcurrency, researchCapture } from '../../backend/research.js'
 import {
   getAdminClient,
   localMidnightAsUtc,
@@ -9,7 +9,7 @@ import {
   todayInTimezone,
   type VercelRequest,
   type VercelResponse,
-} from '../../backend/server'
+} from '../../backend/server.js'
 
 export const maxDuration = 60
 
