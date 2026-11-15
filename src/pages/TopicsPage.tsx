@@ -18,6 +18,7 @@ function formatDate(date: string) {
 
 export default function TopicsPage() {
   const { demoMode } = useAuth()
+  const capturePath = demoMode ? '/app' : '/'
   const [topics, setTopics] = useState<TopicEntry[]>([])
   const [query, setQuery] = useState('')
   const [expandedTopicId, setExpandedTopicId] = useState<string | null>(null)
@@ -97,7 +98,7 @@ export default function TopicsPage() {
           <div className="empty-state">
             <h2>{topics.length ? 'No topics match that search.' : 'No topics yet.'}</h2>
             <p>{topics.length ? 'Try another word or phrase.' : 'Your researched topics will appear here.'}</p>
-            {!topics.length && <Link className="inline-link" to="/">Save a thought <ArrowUpRight size={15} /></Link>}
+            {!topics.length && <Link className="inline-link" to={capturePath}>Save a thought <ArrowUpRight size={15} /></Link>}
           </div>
         ) : (
           <div className="topic-list">

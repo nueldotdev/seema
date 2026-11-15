@@ -11,9 +11,10 @@ interface AppHeaderProps {
 
 export default function AppHeader({ backTo, backLabel, showDigests, showTopics }: AppHeaderProps) {
   const { demoMode } = useAuth()
+  const homePath = demoMode ? '/app' : '/'
   return (
     <header className="page-header">
-      {backTo ? <Link to={backTo} className="back-link"><ArrowLeft size={17} /> {backLabel ?? 'Back'}</Link> : <Link to="/" className="wordmark">seema<span>.</span></Link>}
+      {backTo ? <Link to={backTo === '/' && demoMode ? '/app' : backTo} className="back-link"><ArrowLeft size={17} /> {backLabel ?? 'Back'}</Link> : <Link to={homePath} className="wordmark">seema<span>.</span></Link>}
       {!backTo && <nav className="header-actions" aria-label="Main navigation">
         {showTopics && <Link to="/topics">Topics</Link>}
         {showDigests && <Link to="/digests">Digests</Link>}

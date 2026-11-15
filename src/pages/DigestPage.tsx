@@ -13,6 +13,7 @@ function formatDate(date: string) {
 
 export default function DigestPage() {
   const { demoMode } = useAuth()
+  const capturePath = demoMode ? '/app' : '/'
   const { id } = useParams()
   const [digest, setDigest] = useState<Digest | null>(null)
   const [loading, setLoading] = useState(true)
@@ -92,7 +93,7 @@ export default function DigestPage() {
             {index < items.length - 1 && <div className="topic-divider" />}
           </section>
         ))}
-        <div className="reader-endnote"><span>—</span><p>Keep following the questions that find you.</p><Link to="/">Save another thought <ArrowUpRight size={15} /></Link></div>
+        <div className="reader-endnote"><span>—</span><p>Keep following the questions that find you.</p><Link to={capturePath}>Save another thought <ArrowUpRight size={15} /></Link></div>
       </article>
     </main>
   )

@@ -1,12 +1,13 @@
 # Seema
 
-A quiet, mobile-first study companion: save a thought in a few seconds, then get a researched digest by email the next morning.
+A quiet place for curious minds: save a thought in a few seconds, then get a researched digest by email the next morning.
 
 ## Architecture
 
 - **Vercel** hosts the Vite PWA and Node.js API functions in `api/`.
 - **Supabase** provides Postgres, Auth, and row-level security. No Supabase Edge Functions are required by the current app.
 - **Tavily Search** supplies research sources, **Gemini** writes explanations, and the **Gmail API** sends digests/reminders.
+- Signed-out visitors see a public landing page; sign-in and account creation use the same passwordless email link flow.
 
 ## Local development
 
@@ -19,7 +20,7 @@ The browser only receives `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY
 
 ### Local demo without sign-in
 
-For a UI demo without Supabase credentials, set `VITE_LOCAL_DEMO=true` in `.env.local` and run `npm run dev` (Vite). This works only on `localhost`/`127.0.0.1` in development mode; it is disabled in production builds and on deployed hosts. Demo captures, settings, and sample digests are stored only in that browser's local storage. Research previews are illustrative and do not call AI providers or send emails. Remove the setting or set it to `false` to return to normal sign-in.
+For a UI demo without Supabase credentials, set `VITE_LOCAL_DEMO=true` in `.env.local` and run `npm run dev` (Vite). Open `/` for the public landing page and choose **Explore local demo** to enter the capture flow. This works only on `localhost`/`127.0.0.1` in development mode; it is disabled in production builds and on deployed hosts. Demo captures, settings, and sample digests are stored only in that browser's local storage. Research previews are illustrative and do not call AI providers or send emails. Remove the setting or set it to `false` to return to normal sign-in.
 
 ## Supabase setup
 

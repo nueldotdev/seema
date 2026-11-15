@@ -13,6 +13,7 @@ function formatDate(date: string) {
 
 export default function DigestsPage() {
   const { demoMode } = useAuth()
+  const capturePath = demoMode ? '/app' : '/'
   const [digests, setDigests] = useState<Digest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -54,7 +55,7 @@ export default function DigestsPage() {
         <p className="intro-copy">Your daily reading, with everything researched in one place.</p>
         {error && <p className="form-error" role="alert">{error}</p>}
         {loading ? <div className="list-loading"><span className="loading-dot" /></div> : digests.length === 0 ? (
-          <div className="empty-state"><div className="empty-icon"><BookOpen size={22} /></div><h2>Nothing to read just yet.</h2><p>Your first digest will appear here after we research something you’ve saved.</p><Link className="inline-link" to="/">Save a thought <ArrowUpRight size={15} /></Link></div>
+          <div className="empty-state"><div className="empty-icon"><BookOpen size={22} /></div><h2>Nothing to read just yet.</h2><p>Your first digest will appear here after we research something you’ve saved.</p><Link className="inline-link" to={capturePath}>Save a thought <ArrowUpRight size={15} /></Link></div>
         ) : (
           <div className="digest-list">
             {digests.map((digest) => {
@@ -74,7 +75,7 @@ export default function DigestsPage() {
           </div>
         )}
       </section>
-      <footer className="simple-footer"><Link to="/">Capture a thought <span aria-hidden="true">↗</span></Link></footer>
+      <footer className="simple-footer"><Link to={capturePath}>Capture a thought <span aria-hidden="true">↗</span></Link></footer>
     </main>
   )
 }
