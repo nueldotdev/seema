@@ -82,6 +82,28 @@ export function getDemoPendingCount() {
   return readState().captures.filter((capture) => capture.status === 'pending').length
 }
 
+export function getDemoQueueCaptures() {
+  return readState().captures.filter((capture) => capture.status === 'pending' || capture.status === 'failed')
+}
+
+export function getDemoResearchedCaptures() {
+  return readState().captures.filter((capture) => capture.status === 'researched')
+}
+
+export function researchDemoCapture(id: string) {
+  const state = readState()
+  const capture = state.captures.find((item) => item.id === id && (item.status === 'pending' || item.status === 'failed'))
+  if (!capture) return null
+  capture.status = 'researched'
+  capture.result = {
+    explanation: `This is a local demo preview for “${capture.text}”. In the live app, Seema researches this topic and prepares a tailored explanation with useful sources.`,
+    resources: [],
+    self_test: `What would you most like to understand about ${capture.text}?`,
+  }
+  writeState(state)
+  return capture
+}
+
 export function saveDemoCapture(text: string) {
   const state = readState()
   state.captures.push({

@@ -103,7 +103,7 @@ export default function SettingsPage() {
             <textarea id="context" rows={5} maxLength={1500} value={settings.preset_context} onChange={(e) => setSettings({ ...settings, preset_context: e.target.value })} required />
             <div className="field-divider" />
             <label htmlFor="delivery">When should your digest arrive?</label>
-            <p className="field-hint">We’ll send one email with everything from the day before.</p>
+            <p className="field-hint">We’ll send today’s saved thoughts at this time. Thoughts saved after delivery go in tomorrow’s digest.</p>
             <input id="delivery" type="time" value={settings.delivery_time} onChange={(e) => setSettings({ ...settings, delivery_time: e.target.value })} required />
             <div className="timezone-note">Your time zone <strong>{settings.timezone}</strong></div>
             {message && <p className="success-text" role="status"><Check size={16} /> {message}</p>}

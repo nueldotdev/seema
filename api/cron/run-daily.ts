@@ -3,8 +3,6 @@ import { digestHtml, sendEmail } from '../../backend/email.js'
 import { mapWithConcurrency, researchCapture } from '../../backend/research.js'
 import {
   getAdminClient,
-  localMidnightAsUtc,
-  previousDate,
   requestMethod,
   todayInTimezone,
   type VercelRequest,
@@ -63,9 +61,8 @@ async function sendDailyDigest(setting: DailySetting, supabase: ReturnType<typeo
   const [deliveryHour, deliveryMinute] = setting.delivery_time.split(':').map(Number)
   if (local.minute < deliveryHour * 60 + deliveryMinute) return 'not_due'
 
-  const digestDate = previousDate(local.date)
-  const startAt = localMidnightAsUtc(digestDate, setting.timezone)
-  const endAt = localMidnightAsUtc(local.date, setting.timezone)
+  const digestDate = local.date
+  const cutoff = now.toISOString()
   const { data: existing, error: existingError } = await supabase.from('digests')
     .select('id,status,content,emailed_at')
     .eq('user_id', setting.user_id)
@@ -79,8 +76,8 @@ async function sendDailyDigest(setting: DailySetting, supabase: ReturnType<typeo
     .select('id,user_id,text,created_at,status,result')
     .eq('user_id', setting.user_id)
     .eq('status', 'pending')
-    .gte('created_at', startAt)
-    .lt('created_at', endAt)
+    .is('digest_id', null)
+    .lt('created_at', cutoff)
     .order('created_at', { ascending: true })
   if (capturesError) throw new Error(`Capture lookup failed: ${capturesError.message}`)
   if (!pending?.length && !existing) return 'no_captures'

@@ -83,10 +83,12 @@ Set its `Authorization` header to `Bearer <the same CRON_SECRET from Vercel>` an
 - The PWA shell is cached for quick opens; capture submission requires a network connection.
 - Android Share Target prefills the capture field.
 - The Topics page lists topics from ready digests and supports searching topic text and explanations.
+- The Queue page keeps pending thoughts available across visits and lets each thought be researched independently through the authenticated `/api/research-capture` endpoint. Standalone results appear in Topics.
+- The scheduled digest is dated for the current local day and researches pending captures saved before that day's configured delivery time. Captures saved after the digest has been sent remain pending and are included in the next digest. The external scheduler must call `/api/cron/run-daily` every 15 minutes.
 - “Research … now” researches today's pending captures and opens the digest in-app without sending an email.
 - Research is limited to three captures at a time to avoid exhausting provider quotas and function resources.
 - Tavily supplies search results; Gemini uses their snippets to write explanations. Resource links are always mapped to Tavily-returned URLs.
-- The scheduled function researches the previous local calendar day, sends one email digest, and reminds unopened digests after 24 hours.
+- The scheduled function researches the current local day's eligible captures, sends one email digest, and reminds unopened digests after 24 hours.
 - The `/api/research-now` route validates the signed-in Supabase user before accessing their data. `/api/mark-read` validates its HMAC link before marking the digest opened.
 
 ## Checks

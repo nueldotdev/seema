@@ -8,6 +8,7 @@ import DigestPage from './pages/DigestPage'
 import SettingsPage from './pages/SettingsPage'
 import TopicsPage from './pages/TopicsPage'
 import LandingPage from './pages/LandingPage'
+import QueuePage from './pages/QueuePage'
 
 function AppRoutes() {
   const { session, loading, configured, demoMode } = useAuth()
@@ -19,6 +20,7 @@ function AppRoutes() {
         <Route path="/app" element={<CapturePage />} />
         <Route path="/digests" element={<DigestsPage />} />
         <Route path="/digests/:id" element={<DigestPage />} />
+        <Route path="/queue" element={<QueuePage />} />
         <Route path="/topics" element={<TopicsPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -54,6 +56,7 @@ function AppRoutes() {
       <Route path="/signup" element={<Navigate to="/" replace />} />
       <Route path="/digests" element={<DigestsPage />} />
       <Route path="/digests/:id" element={<DigestPage />} />
+      <Route path="/queue" element={<QueuePage />} />
       <Route path="/topics" element={<TopicsPage />} />
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />

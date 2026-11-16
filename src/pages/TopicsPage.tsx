@@ -5,10 +5,10 @@ import AppHeader from '../components/AppHeader'
 import { supabase } from '../lib/supabase'
 import type { Digest, Capture } from '../lib/types'
 import { useAuth } from '../lib/AuthContext'
-import { getDemoDigests } from '../lib/demo'
+import { getDemoDigests, getDemoResearchedCaptures } from '../lib/demo'
 
 interface TopicEntry extends Capture {
-  digestId: string
+  digestId: string | null
   digestDate: string
 }
 
@@ -30,12 +30,17 @@ export default function TopicsPage() {
     async function load() {
       if (demoMode) {
         try {
-          const demoTopics = getDemoDigests().flatMap((digest) =>
+          const demoDigests = getDemoDigests()
+          const demoTopics = demoDigests.flatMap((digest) =>
             (Array.isArray(digest.content) ? digest.content : [])
               .filter((capture): capture is Capture => Boolean(capture && typeof capture.id === 'string' && typeof capture.text === 'string'))
               .map((capture) => ({ ...capture, digestId: digest.id, digestDate: digest.digest_date })),
           )
-          setTopics(demoTopics)
+          setTopics([...demoTopics, ...getDemoResearchedCaptures().map((capture) => ({
+            ...capture,
+            digestId: null,
+            digestDate: capture.created_at.slice(0, 10),
+          }))])
         } catch (loadError) {
           console.error('Local demo topic load failed:', loadError)
           setError('Local demo topics couldn’t be loaded.')
@@ -57,7 +62,20 @@ export default function TopicsPage() {
           .flatMap((digest) => (Array.isArray(digest.content) ? digest.content : [])
             .filter((capture): capture is Capture => Boolean(capture && typeof capture.id === 'string' && typeof capture.text === 'string'))
             .map((capture) => ({ ...capture, digestId: digest.id, digestDate: digest.digest_date })))
-        setTopics(entries)
+        const { data: standalone, error: capturesError } = await supabase.from('captures')
+          .select('id,text,status,result,created_at')
+          .eq('status', 'researched')
+          .is('digest_id', null)
+          .order('created_at', { ascending: false })
+        if (capturesError) {
+          console.error('Standalone researched topic query failed:', capturesError.message)
+          setError('Some researched topics couldn’t be loaded.')
+        }
+        setTopics([...entries, ...((standalone ?? []) as Capture[]).map((capture) => ({
+          ...capture,
+          digestId: null,
+          digestDate: capture.created_at.slice(0, 10),
+        }))])
       }
       setLoading(false)
     }
@@ -143,7 +161,7 @@ export default function TopicsPage() {
                       {topic.result.self_test && <div className="self-test"><span>Try this</span><p>{topic.result.self_test}</p></div>}
                     </>
                   )}
-                  <Link className="topic-digest-link" to={`/digests/${topic.digestId}`}>Open full digest <ArrowUpRight size={15} /></Link>
+                  {topic.digestId && <Link className="topic-digest-link" to={`/digests/${topic.digestId}`}>Open full digest <ArrowUpRight size={15} /></Link>}
                   </div>
                 </div>
               </section>

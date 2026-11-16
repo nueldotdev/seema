@@ -196,7 +196,7 @@ export default function CapturePage() {
 
   return (
     <main className="capture-shell">
-      <AppHeader showDigests showTopics />
+      <AppHeader showQueue showDigests showTopics />
       <section className="capture-content">
         <h1>What came up<em>?</em></h1>
         <p className="intro-copy">Save a question now. Come back to a clear answer later.</p>
