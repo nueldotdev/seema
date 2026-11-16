@@ -9,7 +9,7 @@ interface DemoState {
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
-  preset_context: 'JUPEB level. Explain simply and clearly, using a warm and encouraging tone.',
+  preset_context: 'Explain clearly and accessibly, using a warm and encouraging tone.',
   delivery_time: '07:00',
   timezone: 'Africa/Lagos',
 }
