@@ -38,6 +38,18 @@ npx supabase db push
 
 Create a Supabase **secret API key** in Project Settings → API Keys. It is a backend credential, not a browser key.
 
+### Authentication email delivery
+
+Supabase Auth continues to create and verify sign-in links. Its Send Email Hook sends authentication emails through the Gmail API used for digests; no SMTP server is required.
+
+1. Deploy the app and add the existing Gmail OAuth variables (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REFRESH_TOKEN`) to Vercel.
+2. In Supabase **Authentication → Hooks**, create a **Send Email** hook and configure its URL as `https://YOUR_APP_URL/api/auth/send-email`.
+3. Copy the generated hook secret (the complete `v1,whsec_...` value) into Vercel as `SEND_EMAIL_HOOK_SECRET`, then redeploy.
+4. Enable the hook in Supabase. Keep the Email provider enabled, and use the hook rather than Supabase’s built-in email sender.
+5. Test a new sign-in and confirm the email arrives from the Gmail account authorized for Seema.
+
+The endpoint verifies Supabase’s signed webhook request before sending. Supabase still enforces per-address and IP-based auth protections; this changes the email-delivery limit, not those protections. Gmail also enforces its own account sending limits.
+
 ## Vercel environment variables
 
 Add these in **Vercel → Project → Settings → Environment Variables**. For local `vercel dev`, put them in the ignored `.env.local` file.
@@ -54,6 +66,7 @@ Add these in **Vercel → Project → Settings → Environment Variables**. For 
 | `GOOGLE_CLIENT_ID` | OAuth client for the Gmail account that sends Seema mail |
 | `GOOGLE_CLIENT_SECRET` | Secret for that OAuth client |
 | `GOOGLE_REFRESH_TOKEN` | Offline OAuth token with `gmail.send` scope |
+| `SEND_EMAIL_HOOK_SECRET` | Supabase Send Email Hook signing secret; server-only |
 | `CRON_SECRET` | Random bearer secret protecting the scheduled endpoint |
 | `MARK_READ_SECRET` | Separate random HMAC key for signed read links |
 | `APP_URL` | Public app origin, e.g. `https://your-project.vercel.app`, without a trailing slash |

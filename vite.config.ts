@@ -22,7 +22,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['seema.svg'],
       manifest: {
-        name: 'Seema — study companion',
+        name: 'Seema',
         short_name: 'Seema',
         description: 'Save a question now. Understand it tomorrow.',
         theme_color: '#f8f8f5',
