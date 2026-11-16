@@ -28,7 +28,7 @@
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100svh;
 }
 button,
 input,
@@ -56,6 +56,7 @@ button {
   display: flex;
   flex-direction: column;
 }
+.capture-shell { min-height: 100dvh; }
 .page-header {
   height: 88px;
   display: flex;
@@ -85,15 +86,6 @@ button {
 .header-actions > a:not(.icon-link):hover {
   color: var(--green);
 }
-.header-actions > .queue-nav-link {
-  padding: 8px 12px;
-  border: 1px solid #d5ded5;
-  border-radius: 999px;
-  background: #edf1eb;
-  color: #385a4a;
-  font-weight: 600;
-}
-.header-actions > .queue-nav-link:hover { background: #e4ebe3; }
 .wordmark {
   font-family: "Playfair Display", serif;
   font-size: 25px;
@@ -1299,7 +1291,6 @@ footer a span:hover {
     gap: 11px;
     font-size: 11px;
   }
-  .header-actions > .queue-nav-link { padding: 7px 10px; }
   .list-content,
   .settings-content,
   .queue-content,

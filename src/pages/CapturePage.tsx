@@ -218,7 +218,7 @@ export default function CapturePage() {
               {researching ? <span className="button-spinner" /> : <Sparkles size={16} />}
               {demoMode ? 'Preview saved thoughts' : researching ? 'Looking into it…' : `Research ${pendingCount} saved ${pendingCount === 1 ? 'thought' : 'thoughts'} now`}
             </button>
-            <p>{demoMode ? 'Creates a local preview only. No live research or email is sent.' : 'Your digest will open here. The morning email still arrives at your usual time.'}</p>
+            <p>{demoMode ? 'Creates a local preview only. No live research or email is sent.' : 'Your digest will open here. The email still arrives at your usual time.'}</p>
           </div>
         )}
         {researchError && <p className="form-error research-feedback" role="alert">{researchError}</p>}
