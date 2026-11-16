@@ -6,6 +6,7 @@ import { supabase } from '../lib/supabase'
 import type { UserSettings } from '../lib/types'
 import { isLocalDemoMode } from '../lib/AuthContext'
 import { getDemoSettings, saveDemoSettings } from '../lib/demo'
+import { applyTheme, getSavedTheme, type Theme } from '../lib/theme'
 
 const DEFAULT_SETTINGS: UserSettings = {
   preset_context: 'JUPEB level. Explain simply and clearly, using a warm and encouraging tone.',
@@ -20,6 +21,8 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
+  const [theme, setTheme] = useState<Theme>(getSavedTheme)
+  const [themeError, setThemeError] = useState('')
 
   useEffect(() => {
     let active = true
@@ -90,12 +93,40 @@ export default function SettingsPage() {
     if (signOutError) console.error('Sign-out failed:', signOutError.message)
   }
 
+  function changeTheme(nextTheme: Theme) {
+    setThemeError('')
+    try {
+      applyTheme(nextTheme)
+      setTheme(nextTheme)
+    } catch (themeChangeError) {
+      setThemeError('Your appearance preference could not be saved. Please check browser storage.')
+      console.error('Appearance preference update failed:', themeChangeError)
+    }
+  }
+
   return (
     <main className="page-shell">
       <AppHeader backTo="/" backLabel="Capture" />
       <section className="settings-content">
         <h1>Settings</h1>
         <p className="intro-copy">Set your learning preferences and delivery time.</p>
+        <section className="appearance-setting" aria-labelledby="appearance-heading">
+          <div>
+            <h2 id="appearance-heading">Appearance</h2>
+            <p className="field-hint">Choose the look that feels comfortable.</p>
+          </div>
+          <label className="theme-toggle">
+            <span>Dark mode</span>
+            <input
+              type="checkbox"
+              role="switch"
+              checked={theme === 'dark'}
+              onChange={(event) => changeTheme(event.target.checked ? 'dark' : 'light')}
+              aria-label="Dark mode"
+            />
+          </label>
+          {themeError && <p className="form-error theme-error" role="alert">{themeError}</p>}
+        </section>
         {loading ? <div className="list-loading"><span className="loading-dot" /></div> : (
           <form className="settings-form" onSubmit={save}>
             <label htmlFor="context">Your learning context</label>

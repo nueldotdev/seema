@@ -83,6 +83,7 @@ Set its `Authorization` header to `Bearer <the same CRON_SECRET from Vercel>` an
 - The PWA shell is cached for quick opens; capture submission requires a network connection.
 - Android Share Target prefills the capture field.
 - The Topics page lists topics from ready digests and supports searching topic text and explanations.
+- A light/dark appearance preference is available in Settings and saved in the current browser.
 - The Queue page keeps pending thoughts available across visits and lets each thought be researched independently through the authenticated `/api/research-capture` endpoint. Standalone results appear in Topics.
 - The scheduled digest is dated for the current local day and researches pending captures saved before that day's configured delivery time. Captures saved after the digest has been sent remain pending and are included in the next digest. The external scheduler must call `/api/cron/run-daily` every 15 minutes.
 - “Research … now” researches today's pending captures and opens the digest in-app without sending an email.
