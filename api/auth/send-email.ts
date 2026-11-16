@@ -241,7 +241,7 @@ export default async function sendAuthEmailHook(request: VercelRequest, response
     } else {
       await sendAuthEmail(recipient, actionType, data, supabaseUrl)
     }
-    return response.status(200).end()
+    return response.status(200).json({})
   } catch (error) {
     console.error('Auth email delivery failed:', error)
     return response.status(500).json({ error: 'Authentication email could not be delivered' })
