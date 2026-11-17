@@ -36,6 +36,8 @@ npx supabase db push
 
 `20261115090000_disable_supabase_cron.sql` disables the old Supabase `pg_cron` dispatcher, so it does not continue calling the retired Edge Functions. Apply this migration **before enabling the replacement external schedule** to avoid duplicate digest emails. The existing schema migration creates the tables and owner-scoped RLS policies.
 
+`20261117103000_email_preferences_and_suggestions.sql` adds the per-user email opt-out and the RLS-protected suggestions table. Apply this migration to the linked remote project before deploying code that reads `email_enabled` or submits suggestions. Suggestions can be reviewed from the Supabase Dashboard; users can submit only their own and cannot read other submissions.
+
 Create a Supabase **secret API key** in Project Settings → API Keys. It is a backend credential, not a browser key.
 
 ### Authentication email delivery
@@ -103,6 +105,7 @@ Set its `Authorization` header to `Bearer <the same CRON_SECRET from Vercel>` an
 - Research is limited to three captures at a time to avoid exhausting provider quotas and function resources.
 - Tavily supplies search results; Gemini uses their snippets to write explanations. Resource links are always mapped to Tavily-returned URLs.
 - The scheduled function researches the current local day's eligible captures, sends one email digest, and reminds unopened digests after 24 hours.
+- Users can disable scheduled digest and reminder emails in Settings; research and in-app results continue. The suggestion form stores submissions in `public.user_suggestions`, protected by row-level security.
 - The `/api/research-now` route validates the signed-in Supabase user before accessing their data. `/api/mark-read` validates its HMAC link before marking the digest opened.
 
 ## Checks

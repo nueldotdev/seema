@@ -6,12 +6,14 @@ interface DemoState {
   captures: Capture[]
   digests: Digest[]
   settings: UserSettings
+  suggestions: string[]
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
   preset_context: 'Explain clearly and accessibly, using a warm and encouraging tone.',
   delivery_time: '07:00',
   timezone: 'Africa/Lagos',
+  email_enabled: true,
 }
 
 function seedState(): DemoState {
@@ -24,6 +26,7 @@ function seedState(): DemoState {
   return {
     settings: { ...DEFAULT_SETTINGS },
     captures: [],
+    suggestions: [],
     digests: [{
       id: 'local-demo-digest',
       digest_date: digestDate,
@@ -70,7 +73,8 @@ function readState(): DemoState {
   return {
     captures: Array.isArray(parsed.captures) ? parsed.captures : [],
     digests: Array.isArray(parsed.digests) ? parsed.digests : [],
-    settings: parsed.settings ?? { ...DEFAULT_SETTINGS },
+    settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
+    suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
   }
 }
 
@@ -172,5 +176,11 @@ export function getDemoSettings() {
 export function saveDemoSettings(settings: UserSettings) {
   const state = readState()
   state.settings = settings
+  writeState(state)
+}
+
+export function saveDemoSuggestion(suggestion: string) {
+  const state = readState()
+  state.suggestions.push(suggestion)
   writeState(state)
 }

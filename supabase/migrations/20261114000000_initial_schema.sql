@@ -2,7 +2,7 @@ create extension if not exists pgcrypto;
 
 create table public.settings (
   user_id uuid primary key default auth.uid() references auth.users (id) on delete cascade,
-  preset_context text not null default 'JUPEB level. Explain simply and clearly, using a warm and encouraging tone.',
+  preset_context text not null default 'Explain simply and clearly, using a warm and encouraging tone.',
   delivery_time time not null default '07:00',
   timezone text not null default 'Africa/Lagos',
   updated_at timestamptz not null default now()

@@ -16,6 +16,7 @@ interface DailySetting {
   preset_context: string
   delivery_time: string
   timezone: string
+  email_enabled: boolean
 }
 
 interface CaptureRow {
@@ -64,12 +65,13 @@ async function sendDailyDigest(setting: DailySetting, supabase: ReturnType<typeo
   const digestDate = local.date
   const cutoff = now.toISOString()
   const { data: existing, error: existingError } = await supabase.from('digests')
-    .select('id,status,content,emailed_at')
+    .select('id,status,content,emailed_at,email_skipped_at')
     .eq('user_id', setting.user_id)
     .eq('digest_date', digestDate)
     .maybeSingle()
   if (existingError) throw new Error(`Digest lookup failed: ${existingError.message}`)
   if (existing?.emailed_at) return 'already_sent'
+  if (existing?.email_skipped_at) return 'already_processed_no_email'
   if (existing?.status === 'processing') return 'already_claimed'
 
   const { data: pending, error: capturesError } = await supabase.from('captures')
@@ -146,6 +148,14 @@ async function sendDailyDigest(setting: DailySetting, supabase: ReturnType<typeo
       .eq('id', digestId)
     if (contentError) throw new Error(`Digest content save failed: ${contentError.message}`)
 
+    if (!setting.email_enabled) {
+      const { error: skippedError } = await supabase.from('digests')
+        .update({ email_skipped_at: new Date().toISOString(), status: 'ready' })
+        .eq('id', digestId)
+      if (skippedError) throw new Error(`Digest email opt-out save failed: ${skippedError.message}`)
+      return 'researched_no_email'
+    }
+
     const { data: userData, error: userError } = await supabase.auth.admin.getUserById(setting.user_id)
     if (userError) throw new Error(`User email lookup failed: ${userError.message}`)
     const email = userData.user.email
@@ -175,7 +185,7 @@ async function sendDailyDigest(setting: DailySetting, supabase: ReturnType<typeo
   }
 }
 
-async function sendReminders(supabase: ReturnType<typeof getAdminClient>, now: Date) {
+async function sendReminders(supabase: ReturnType<typeof getAdminClient>, now: Date, emailDisabledUsers: Set<string>) {
   const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
   const { data: digests, error } = await supabase.from('digests')
     .select('id,user_id,digest_date,content,emailed_at')
@@ -193,6 +203,10 @@ async function sendReminders(supabase: ReturnType<typeof getAdminClient>, now: D
 
   const outcomes: Array<{ digest_id: string; status: string }> = []
   for (const digest of digests ?? []) {
+    if (emailDisabledUsers.has(digest.user_id)) {
+      outcomes.push({ digest_id: digest.id, status: 'email_disabled' })
+      continue
+    }
     const claimTime = new Date().toISOString()
     const { data: claimed, error: claimError } = await supabase.from('digests')
       .update({ reminder_sent_at: claimTime })
@@ -239,7 +253,7 @@ export default async function runDaily(request: VercelRequest, response: VercelR
     const supabase = getAdminClient()
     const { data: settings, error } = await supabase
       .from('settings')
-      .select('user_id,preset_context,delivery_time,timezone')
+      .select('user_id,preset_context,delivery_time,timezone,email_enabled')
     if (error) throw new Error(`Settings lookup failed: ${error.message}`)
 
     const outcomes: Array<{ user_id: string; status: string }> = []
@@ -252,7 +266,10 @@ export default async function runDaily(request: VercelRequest, response: VercelR
         outcomes.push({ user_id: setting.user_id, status: 'failed' })
       }
     }
-    const reminders = await sendReminders(supabase, new Date())
+    const emailDisabledUsers = new Set(((settings ?? []) as DailySetting[])
+      .filter((setting) => !setting.email_enabled)
+      .map((setting) => setting.user_id))
+    const reminders = await sendReminders(supabase, new Date(), emailDisabledUsers)
     return response.status(200).json({ processed: outcomes.length, outcomes, reminders })
   } catch (error) {
     console.error('Daily digest scheduler failed:', error)

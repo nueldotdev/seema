@@ -35,4 +35,5 @@ export interface UserSettings {
   preset_context: string
   delivery_time: string
   timezone: string
+  email_enabled: boolean
 }
