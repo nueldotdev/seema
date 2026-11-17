@@ -146,7 +146,7 @@ export default function SettingsPage() {
       <AppHeader backTo="/" backLabel="Capture" />
       <section className="settings-content">
         <h1>Settings</h1>
-        <p className="intro-copy">Set your learning preferences and delivery time.</p>
+        <p className="intro-copy">Set your preferences and daily research time.</p>
         <section className="appearance-setting" aria-labelledby="appearance-heading">
           <div>
             <h2 id="appearance-heading">Appearance</h2>
@@ -166,27 +166,41 @@ export default function SettingsPage() {
         </section>
         {loading ? <div className="list-loading"><span className="loading-dot" /></div> : (
           <form className="settings-form" onSubmit={save}>
-            <label htmlFor="context">Your learning context</label>
+            <label htmlFor="context">Your context</label>
             <p className="field-hint">Level, tone, explanation style — whatever helps things click.</p>
             <textarea id="context" rows={5} maxLength={1500} value={settings.preset_context} onChange={(e) => setSettings({ ...settings, preset_context: e.target.value })} required />
             <div className="field-divider" />
             <label htmlFor="delivery">When should your digest arrive?</label>
-            <p className="field-hint">We’ll send today’s saved thoughts at this time. Thoughts saved after delivery go in tomorrow’s digest.</p>
-            <input id="delivery" type="time" value={settings.delivery_time} onChange={(e) => setSettings({ ...settings, delivery_time: e.target.value })} required />
+            <p className="field-hint">
+              {settings.email_enabled
+                ? 'We’ll send today’s saved thoughts at this time. Thoughts saved after delivery go in tomorrow’s digest.'
+                : 'Turn email delivery on to choose when your daily digest arrives.'}
+            </p>
+            <input
+              id="delivery"
+              type="time"
+              value={settings.delivery_time}
+              onChange={(e) => setSettings({ ...settings, delivery_time: e.target.value })}
+              disabled={!settings.email_enabled}
+              required
+            />
             <div className="timezone-note">Your time zone <strong>{settings.timezone}</strong></div>
-            <label className="email-preference">
-              <span>
-                <strong>Send me email digests and reminders</strong>
-                <small>Turn this off to keep your research in the app without receiving email.</small>
-              </span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={settings.email_enabled}
-                onChange={(event) => setSettings({ ...settings, email_enabled: event.target.checked })}
-                aria-label="Receive digest and reminder emails"
-              />
-            </label>
+            <section className="appearance-setting" aria-labelledby="email-heading">
+              <div>
+                <h2 id="email-heading">Email delivery</h2>
+                <p className="field-hint">Receive daily digests and unopened reminders.</p>
+              </div>
+              <label className="theme-toggle">
+                <span>Email</span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  checked={settings.email_enabled}
+                  onChange={(event) => setSettings({ ...settings, email_enabled: event.target.checked })}
+                  aria-label="Receive digest and reminder emails"
+                />
+              </label>
+            </section>
             {message && <p className="success-text" role="status"><Check size={16} /> {message}</p>}
             {error && <p className="form-error" role="alert">{error}</p>}
             <button className="primary-button settings-save" type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save my preferences'}</button>
@@ -200,7 +214,7 @@ export default function SettingsPage() {
             <textarea
               id="suggestion"
               rows={4}
-              maxLength={3000}
+              maxLength={4}
               value={suggestion}
               onChange={(event) => setSuggestion(event.target.value)}
               placeholder="Share a feature idea or something we could improve…"

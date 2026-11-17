@@ -3,6 +3,7 @@
     { "source": "/app", "destination": "/index.html" },
     { "source": "/queue", "destination": "/index.html" },
     { "source": "/digests/:path*", "destination": "/index.html" },
+    { "source": "/history", "destination": "/index.html" },
     { "source": "/topics", "destination": "/index.html" },
     { "source": "/signin", "destination": "/index.html" },
     { "source": "/signup", "destination": "/index.html" },

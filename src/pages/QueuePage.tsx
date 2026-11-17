@@ -164,7 +164,7 @@ export default function QueuePage() {
                   </div>
                 </article>
               ))}
-              <Link className="inline-link" to="/topics">Browse all researched topics <ArrowUpRight size={15} /></Link>
+              <Link className="inline-link" to="/history">Browse your history <ArrowUpRight size={15} /></Link>
             </section>}
           </>
         )}

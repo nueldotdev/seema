@@ -44,12 +44,12 @@ export default async function researchNow(request: VercelRequest, response: Verc
     adminClient = auth.client
 
     const { data: settings, error: settingsError } = await auth.client.from('settings')
-      .select('preset_context,timezone')
+      .select('preset_context,timezone,email_enabled')
       .eq('user_id', auth.user.id)
       .maybeSingle()
     if (settingsError) {
       console.error('Immediate research settings lookup failed:', settingsError.message)
-      return response.status(500).json({ error: 'Unable to load your study preferences' })
+      return response.status(500).json({ error: 'Unable to load your preferences' })
     }
 
     const timezone = settings?.timezone ?? 'Africa/Lagos'
@@ -66,6 +66,28 @@ export default async function researchNow(request: VercelRequest, response: Verc
     if (pendingError) {
       console.error('Immediate research capture lookup failed:', pendingError.message)
       return response.status(500).json({ error: 'Unable to load today’s saved thoughts' })
+    }
+
+    if (settings?.email_enabled === false) {
+      if (!pending?.length) return response.status(200).json({ status: 'no_pending' })
+      const presetContext = settings.preset_context ?? 'Explain simply and clearly, using a warm and encouraging tone.'
+      const researched = await mapWithConcurrency((pending ?? []) as CaptureRow[], 3, async (capture) => {
+        try {
+          return { ...capture, status: 'researched', result: await researchCapture(capture.text, presetContext), digest_id: null }
+        } catch (error) {
+          console.error(`Research failed for capture ${capture.id}:`, error)
+          return { ...capture, status: 'failed', result: { error: 'Research could not be completed.' }, digest_id: null }
+        }
+      })
+      const { error: saveCaptureError } = await auth.client.from('captures').upsert(
+        researched,
+        { onConflict: 'id' },
+      )
+      if (saveCaptureError) {
+        console.error('Immediate standalone research save failed:', saveCaptureError.message)
+        return response.status(500).json({ error: 'Unable to save your researched topics' })
+      }
+      return response.status(200).json({ status: 'researched', count: researched.length })
     }
 
     const { data: existing, error: digestLookupError } = await auth.client.from('digests')

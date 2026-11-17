@@ -3,6 +3,7 @@ import { digestHtml, sendEmail } from '../../backend/email.js'
 import { mapWithConcurrency, researchCapture } from '../../backend/research.js'
 import {
   getAdminClient,
+  localMidnightAsUtc,
   requestMethod,
   todayInTimezone,
   type VercelRequest,
@@ -71,7 +72,6 @@ async function sendDailyDigest(setting: DailySetting, supabase: ReturnType<typeo
     .maybeSingle()
   if (existingError) throw new Error(`Digest lookup failed: ${existingError.message}`)
   if (existing?.emailed_at) return 'already_sent'
-  if (existing?.email_skipped_at) return 'already_processed_no_email'
   if (existing?.status === 'processing') return 'already_claimed'
 
   const { data: pending, error: capturesError } = await supabase.from('captures')
@@ -79,10 +79,37 @@ async function sendDailyDigest(setting: DailySetting, supabase: ReturnType<typeo
     .eq('user_id', setting.user_id)
     .eq('status', 'pending')
     .is('digest_id', null)
+    .gte('created_at', localMidnightAsUtc(digestDate, setting.timezone))
     .lt('created_at', cutoff)
     .order('created_at', { ascending: true })
   if (capturesError) throw new Error(`Capture lookup failed: ${capturesError.message}`)
   if (!pending?.length && !existing) return 'no_captures'
+
+  if (!setting.email_enabled) {
+    const researched = await mapWithConcurrency((pending ?? []) as CaptureRow[], 3, async (capture) => {
+      try {
+        return { ...capture, status: 'researched', result: await researchCapture(capture.text, setting.preset_context), digest_id: null }
+      } catch (error) {
+        console.error(`Research failed for capture ${capture.id}:`, error)
+        return { ...capture, status: 'failed', result: { error: 'Research could not be completed.' }, digest_id: null }
+      }
+    })
+    if (researched.length) {
+      const { error: saveError } = await supabase.from('captures').upsert(researched, { onConflict: 'id' })
+      if (saveError) throw new Error(`Standalone capture result save failed: ${saveError.message}`)
+    }
+    if (existing && !existing.email_skipped_at) {
+      const { error: skipError } = await supabase.from('digests')
+        .update({ email_skipped_at: now.toISOString(), status: 'ready' })
+        .eq('id', existing.id)
+        .is('emailed_at', null)
+      if (skipError) throw new Error(`Digest email opt-out save failed: ${skipError.message}`)
+    }
+    if (researched.length) return 'researched_no_email'
+    return existing?.email_skipped_at ? 'already_processed_no_email' : 'no_captures'
+  }
+
+  if (existing?.email_skipped_at) return 'already_processed_no_email'
 
   let digestId: string
   if (existing) {
@@ -185,6 +212,78 @@ async function sendDailyDigest(setting: DailySetting, supabase: ReturnType<typeo
   }
 }
 
+async function sendOverdueDigests(setting: DailySetting, supabase: ReturnType<typeof getAdminClient>, now: Date) {
+  const local = todayInTimezone(setting.timezone, now)
+  const [deliveryHour, deliveryMinute] = setting.delivery_time.split(':').map(Number)
+  if (local.minute < deliveryHour * 60 + deliveryMinute) return 0
+
+  const { data: overdue, error } = await supabase.from('digests')
+    .select('id,digest_date,content')
+    .eq('user_id', setting.user_id)
+    .lt('digest_date', local.date)
+    .in('status', ['ready', 'failed'])
+    .is('emailed_at', null)
+    .is('email_skipped_at', null)
+    .order('digest_date', { ascending: true })
+  if (error) throw new Error(`Overdue digest lookup failed: ${error.message}`)
+  if (!overdue?.length) return 0
+
+  if (!setting.email_enabled) {
+    const { error: skipError } = await supabase.from('digests')
+      .update({ email_skipped_at: now.toISOString(), status: 'ready' })
+      .in('id', overdue.map((digest) => digest.id))
+      .is('emailed_at', null)
+      .is('email_skipped_at', null)
+    if (skipError) throw new Error(`Overdue digest opt-out save failed: ${skipError.message}`)
+    return 0
+  }
+
+  const { data: userData, error: userError } = await supabase.auth.admin.getUserById(setting.user_id)
+  if (userError) throw new Error(`Overdue digest email lookup failed: ${userError.message}`)
+  const email = userData.user.email
+  if (!email) throw new Error('No email address is associated with the user')
+
+  const markReadSecret = process.env.MARK_READ_SECRET
+  const appUrl = process.env.APP_URL
+  if (!markReadSecret || !appUrl) throw new Error('MARK_READ_SECRET and APP_URL are required')
+
+  let sent = 0
+  for (const digest of overdue) {
+    const { data: claimed, error: claimError } = await supabase.from('digests')
+      .update({ status: 'processing' })
+      .eq('id', digest.id)
+      .in('status', ['ready', 'failed'])
+      .is('emailed_at', null)
+      .is('email_skipped_at', null)
+      .select('id')
+      .maybeSingle()
+    if (claimError) throw new Error(`Overdue digest claim failed: ${claimError.message}`)
+    if (!claimed) continue
+
+    try {
+      const signature = createHmac('sha256', markReadSecret).update(digest.id).digest('hex')
+      const readUrl = `${appUrl.replace(/\/$/, '')}/api/mark-read?id=${encodeURIComponent(digest.id)}&token=${signature}`
+      await sendEmail({
+        to: email,
+        subject: `Your Seema digest for ${digest.digest_date}`,
+        html: digestHtml(contentItems(digest.content), readUrl),
+      })
+      const { error: sentError } = await supabase.from('digests')
+        .update({ emailed_at: new Date().toISOString(), status: 'ready' })
+        .eq('id', digest.id)
+      if (sentError) throw new Error(`Overdue digest sent but email status update failed: ${sentError.message}`)
+      sent += 1
+    } catch (sendError) {
+      const { error: releaseError } = await supabase.from('digests')
+        .update({ status: 'failed' })
+        .eq('id', digest.id)
+      if (releaseError) console.error('Unable to release failed overdue digest claim:', releaseError.message)
+      console.error(`Overdue digest email failed for ${digest.id}:`, sendError)
+    }
+  }
+  return sent
+}
+
 async function sendReminders(supabase: ReturnType<typeof getAdminClient>, now: Date, emailDisabledUsers: Set<string>) {
   const cutoff = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
   const { data: digests, error } = await supabase.from('digests')
@@ -256,14 +355,16 @@ export default async function runDaily(request: VercelRequest, response: VercelR
       .select('user_id,preset_context,delivery_time,timezone,email_enabled')
     if (error) throw new Error(`Settings lookup failed: ${error.message}`)
 
-    const outcomes: Array<{ user_id: string; status: string }> = []
+    const outcomes: Array<{ user_id: string; status: string; overdue_sent: number }> = []
     for (const setting of (settings ?? []) as DailySetting[]) {
+      let overdueSent = 0
       try {
+        overdueSent = await sendOverdueDigests(setting, supabase, new Date())
         const status = await sendDailyDigest(setting, supabase, new Date())
-        outcomes.push({ user_id: setting.user_id, status })
+        outcomes.push({ user_id: setting.user_id, status, overdue_sent: overdueSent })
       } catch (userError) {
         console.error(`Daily digest failed for ${setting.user_id}:`, userError)
-        outcomes.push({ user_id: setting.user_id, status: 'failed' })
+        outcomes.push({ user_id: setting.user_id, status: 'failed', overdue_sent: overdueSent })
       }
     }
     const emailDisabledUsers = new Set(((settings ?? []) as DailySetting[])

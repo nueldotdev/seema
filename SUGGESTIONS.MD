@@ -38,7 +38,7 @@ Product ideas to strengthen Seema's core loop: capture a thought quickly, get a 
 ### 6. Personalize for different kinds of curiosity
 
 - Let people choose an answer style, such as brief or detailed, practical or conceptual, beginner-friendly or advanced.
-- Keep preferences useful to many interests and backgrounds, without framing Seema only around school or exams.
+- Keep preferences useful across a wide range of interests and backgrounds.
 
 ## Recommended build order
 

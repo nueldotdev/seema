@@ -38,7 +38,7 @@ Deno.serve(async (request) => {
     .select('preset_context,timezone')
     .eq('user_id', userId)
     .maybeSingle()
-  if (settingsError) return jsonResponse({ error: 'Unable to load your study preferences' }, 500)
+  if (settingsError) return jsonResponse({ error: 'Unable to load your preferences' }, 500)
 
   const timezone = settings?.timezone ?? 'Africa/Lagos'
   let digestDate: string

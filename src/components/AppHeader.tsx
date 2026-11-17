@@ -7,10 +7,10 @@ interface AppHeaderProps {
   backLabel?: string
   showQueue?: boolean
   showDigests?: boolean
-  showTopics?: boolean
+  showHistory?: boolean
 }
 
-export default function AppHeader({ backTo, backLabel, showQueue, showDigests, showTopics }: AppHeaderProps) {
+export default function AppHeader({ backTo, backLabel, showQueue, showDigests, showHistory }: AppHeaderProps) {
   const { demoMode } = useAuth()
   const homePath = demoMode ? '/app' : '/'
   return (
@@ -18,7 +18,7 @@ export default function AppHeader({ backTo, backLabel, showQueue, showDigests, s
       {backTo ? <Link to={backTo === '/' && demoMode ? '/app' : backTo} className="back-link"><ArrowLeft size={17} /> {backLabel ?? 'Back'}</Link> : <Link to={homePath} className="wordmark">seema<span>.</span></Link>}
       {!backTo && <nav className="header-actions" aria-label="Main navigation">
         {showQueue && <Link to="/queue">Queue</Link>}
-        {showTopics && <Link to="/topics">Topics</Link>}
+        {showHistory && <Link to="/history">History</Link>}
         {showDigests && <Link to="/digests">Digests</Link>}
         <Link to="/settings" className="icon-link" aria-label="Settings"><Settings2 size={19} strokeWidth={1.7} /></Link>
       </nav>}

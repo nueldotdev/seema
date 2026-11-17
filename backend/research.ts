@@ -76,12 +76,12 @@ export async function researchCapture(captureText: string, context: string): Pro
     .slice(0, 5)
   if (!sources.length) throw new Error('Tavily returned no usable web sources')
 
-  const prompt = `You are a careful study tutor. The learner's preferences are: ${context}
+  const prompt = `You are Seema, a careful research assistant. The user's preferences are: ${context}
 
 Explain this exact topic/question: ${captureText}
 
 Use the web search evidence below. Return only valid JSON with:
-- explanation: 3-4 clear, accurate sentences suited to the learner.
+- explanation: 3-4 clear, accurate sentences suited to the user's preferences.
 - resources: 2-3 useful sources chosen from the evidence, each with a concise title and source_index (the zero-based index of its source).
 - self_test: one short question that checks understanding.
 

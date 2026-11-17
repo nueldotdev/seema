@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
-import { createDemoDigest, getDemoPendingCount, saveDemoCapture } from '../lib/demo'
+import { createDemoDigest, getDemoPendingCount, getDemoQueueCaptures, getDemoSettings, researchDemoCapture, saveDemoCapture } from '../lib/demo'
 
 export default function CapturePage() {
   const { demoMode } = useAuth()
@@ -12,6 +12,7 @@ export default function CapturePage() {
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [message, setMessage] = useState('')
   const [pendingCount, setPendingCount] = useState(0)
+  const [emailEnabled, setEmailEnabled] = useState(true)
   const [researching, setResearching] = useState(false)
   const [researchError, setResearchError] = useState('')
   const [searchParams] = useSearchParams()
@@ -31,6 +32,7 @@ export default function CapturePage() {
       if (demoMode) {
         try {
           setPendingCount(getDemoPendingCount())
+          setEmailEnabled(getDemoSettings().email_enabled)
         } catch (error) {
           console.error('Unable to load local demo captures:', error)
           setResearchError('Couldn’t load local demo data. Check browser storage and try again.')
@@ -39,13 +41,14 @@ export default function CapturePage() {
       }
       if (!supabase) return
       const { data: settings, error: settingsError } = await supabase.from('settings')
-        .select('timezone')
+        .select('timezone,email_enabled')
         .maybeSingle()
       if (settingsError) {
         console.error('Settings timezone lookup failed:', settingsError.message)
         if (active) setResearchError('Couldn’t check your saved thoughts. Please refresh and try again.')
         return
       }
+      if (active) setEmailEnabled(settings?.email_enabled ?? true)
       const timezone = settings?.timezone ?? 'Africa/Lagos'
       const dateParts = new Intl.DateTimeFormat('en-US', {
         timeZone: timezone,
@@ -123,6 +126,14 @@ export default function CapturePage() {
   async function researchNow() {
     if (demoMode) {
       try {
+        if (!emailEnabled) {
+          for (const capture of getDemoQueueCaptures().filter((item) => item.status === 'pending')) {
+            researchDemoCapture(capture.id)
+          }
+          setPendingCount(0)
+          navigate('/history')
+          return
+        }
         const digestId = createDemoDigest()
         if (digestId) {
           setPendingCount(0)
@@ -183,6 +194,11 @@ export default function CapturePage() {
       navigate(`/digests/${data.digest_id}`)
       return
     }
+    if (data.status === 'researched') {
+      setPendingCount(0)
+      navigate('/history')
+      return
+    }
     setPendingCount(0)
     setResearchError('No saved thoughts are waiting to be researched.')
   }
@@ -196,7 +212,7 @@ export default function CapturePage() {
 
   return (
     <main className="capture-shell">
-      <AppHeader showQueue showDigests showTopics />
+      <AppHeader showQueue showDigests={emailEnabled} showHistory />
       <section className="capture-content">
         <h1>What came up<em>?</em></h1>
         <p className="intro-copy">Save a question now. Come back to a clear answer later.</p>

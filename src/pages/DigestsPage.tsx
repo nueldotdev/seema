@@ -7,6 +7,8 @@ import type { Digest } from '../lib/types'
 import { useAuth } from '../lib/AuthContext'
 import { getDemoDigests } from '../lib/demo'
 
+const PAGE_SIZE = 20
+
 function formatDate(date: string) {
   return new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(new Date(`${date}T12:00:00`))
 }
@@ -16,6 +18,8 @@ export default function DigestsPage() {
   const capturePath = demoMode ? '/app' : '/'
   const [digests, setDigests] = useState<Digest[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
@@ -23,7 +27,9 @@ export default function DigestsPage() {
     async function load() {
       if (demoMode) {
         try {
-          setDigests(getDemoDigests())
+          const allDigests = getDemoDigests()
+          setDigests(allDigests.slice(0, PAGE_SIZE))
+          setHasMore(allDigests.length > PAGE_SIZE)
         } catch (loadError) {
           console.error('Local demo digest load failed:', loadError)
           setError('Local demo digests couldn’t be loaded.')
@@ -32,17 +38,50 @@ export default function DigestsPage() {
         return
       }
       if (!supabase) return
-      const { data, error: queryError } = await supabase.from('digests').select('id,digest_date,content,created_at,emailed_at,opened_at,reminder_sent_at').eq('status', 'ready').order('digest_date', { ascending: false })
+      const { data, count, error: queryError } = await supabase.from('digests')
+        .select('id,digest_date,content,created_at,emailed_at,opened_at,reminder_sent_at', { count: 'exact' })
+        .eq('status', 'ready')
+        .order('digest_date', { ascending: false })
+        .range(0, PAGE_SIZE - 1)
       if (!active) return
       if (queryError) {
         setError('Your digests couldn’t be loaded. Please try again.')
         console.error('Digest list query failed:', queryError.message)
-      } else setDigests((data ?? []) as Digest[])
+      } else {
+        setDigests((data ?? []) as Digest[])
+        setHasMore((count ?? 0) > (data?.length ?? 0))
+      }
       setLoading(false)
     }
     void load()
     return () => { active = false }
   }, [demoMode])
+
+  async function loadMore() {
+    if (demoMode) {
+      const allDigests = getDemoDigests()
+      setDigests(allDigests.slice(0, digests.length + PAGE_SIZE))
+      setHasMore(allDigests.length > digests.length + PAGE_SIZE)
+      return
+    }
+    if (!supabase) return
+    setLoadingMore(true)
+    setError('')
+    const { data, count, error: queryError } = await supabase.from('digests')
+      .select('id,digest_date,content,created_at,emailed_at,opened_at,reminder_sent_at', { count: 'exact' })
+      .eq('status', 'ready')
+      .order('digest_date', { ascending: false })
+      .range(digests.length, digests.length + PAGE_SIZE - 1)
+    if (queryError) {
+      console.error('Additional digest query failed:', queryError.message)
+      setError('More digests couldn’t be loaded. Please try again.')
+    } else {
+      const nextDigests = (data ?? []) as Digest[]
+      setDigests((current) => [...current, ...nextDigests])
+      setHasMore((count ?? 0) > digests.length + nextDigests.length)
+    }
+    setLoadingMore(false)
+  }
 
   return (
     <main className="page-shell">
@@ -50,7 +89,7 @@ export default function DigestsPage() {
       <section className="list-content">
         <div className="section-heading-row">
           <h1>Digests</h1>
-          <Link className="section-action" to="/topics">Browse topics <ArrowUpRight size={15} /></Link>
+          <Link className="section-action" to="/history">Browse history <ArrowUpRight size={15} /></Link>
         </div>
         <p className="intro-copy">Your daily reading, with everything researched in one place.</p>
         {error && <p className="form-error" role="alert">{error}</p>}
@@ -73,6 +112,11 @@ export default function DigestsPage() {
               )
             })}
           </div>
+        )}
+        {!loading && digests.length > 0 && hasMore && (
+          <button className="primary-button load-more-button" type="button" onClick={loadMore} disabled={loadingMore}>
+            {loadingMore ? 'Loading…' : 'Load more'}
+          </button>
         )}
       </section>
       <footer className="simple-footer"><Link to={capturePath}>Capture a thought <span aria-hidden="true">↗</span></Link></footer>
