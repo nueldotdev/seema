@@ -19,7 +19,7 @@ create policy "Users can delete their own capture follow-ups"
   on public.capture_followups for delete to authenticated
   using ((select auth.uid()) = user_id);
 
-drop index public.digest_followups_digest_created_idx;
+drop index if exists public.digest_followups_digest_created_idx;
 create index capture_followups_capture_created_idx
   on public.capture_followups (capture_id, created_at);
 
