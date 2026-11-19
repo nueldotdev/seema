@@ -19,6 +19,7 @@ export interface Capture {
   status: CaptureStatus
   result: CaptureResult | null
   created_at: string
+  followup_count?: number
 }
 
 export interface Digest {
@@ -29,6 +30,14 @@ export interface Digest {
   emailed_at: string | null
   opened_at: string | null
   reminder_sent_at: string | null
+}
+
+export interface CaptureFollowUp {
+  id: string
+  capture_id: string
+  question: string
+  answer: string
+  created_at: string
 }
 
 export interface UserSettings {

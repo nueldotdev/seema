@@ -1,17 +1,20 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { ArrowUp, Check, LogOut, Sparkles } from 'lucide-react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import { createDemoDigest, getDemoPendingCount, getDemoQueueCaptures, getDemoSettings, researchDemoCapture, saveDemoCapture } from '../lib/demo'
+import { getOfflineCaptures, saveOfflineCapture, syncOfflineCaptures } from '../lib/offline-captures'
 
 export default function CapturePage() {
-  const { demoMode } = useAuth()
+  const { demoMode, session } = useAuth()
   const [text, setText] = useState('')
   const [status, setStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
   const [message, setMessage] = useState('')
   const [pendingCount, setPendingCount] = useState(0)
+  const [offlineCount, setOfflineCount] = useState(0)
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [emailEnabled, setEmailEnabled] = useState(true)
   const [researching, setResearching] = useState(false)
   const [researchError, setResearchError] = useState('')
@@ -27,61 +30,104 @@ export default function CapturePage() {
   }, [searchParams])
 
   useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
+  const refreshPendingCount = useCallback(async () => {
+    if (demoMode) {
+      try {
+        setPendingCount(getDemoPendingCount())
+        setEmailEnabled(getDemoSettings().email_enabled)
+      } catch (error) {
+        console.error('Unable to load local demo captures:', error)
+        setResearchError('Couldn’t load local demo data. Check browser storage and try again.')
+      }
+      return
+    }
+    const userId = session?.user.id
+    if (!supabase || !userId) return
+    try {
+      const offline = getOfflineCaptures(userId)
+      const localDate = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' })
+      const todayLocal = localDate.format(new Date())
+      setOfflineCount(offline.filter((capture) => localDate.format(new Date(capture.created_at)) === todayLocal).length)
+    } catch (error) {
+      console.error('Offline capture queue could not be loaded:', error)
+      setResearchError('Your locally saved thoughts could not be loaded from this browser.')
+      return
+    }
+    if (!navigator.onLine) return
+    const { data: settings, error: settingsError } = await supabase.from('settings')
+      .select('timezone,email_enabled')
+      .maybeSingle()
+    if (settingsError) {
+      console.error('Settings timezone lookup failed:', settingsError.message)
+      if (navigator.onLine) setResearchError('Couldn’t check your saved thoughts. Please refresh and try again.')
+      return
+    }
+    setEmailEnabled(settings?.email_enabled ?? true)
+    const timezone = settings?.timezone ?? 'Africa/Lagos'
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+    const dateKey = (value: string) => {
+      const values = Object.fromEntries(formatter.formatToParts(new Date(value)).map((part) => [part.type, part.value]))
+      return `${values.year}-${values.month}-${values.day}`
+    }
+    const today = dateKey(new Date().toISOString())
+    const offline = getOfflineCaptures(userId)
+    setOfflineCount(offline.filter((capture) => dateKey(capture.created_at) === today).length)
+    const { data, error } = await supabase.from('captures')
+      .select('created_at')
+      .eq('status', 'pending')
+    if (error) {
+      console.error('Pending capture count failed:', error.message)
+      if (navigator.onLine) setResearchError('Couldn’t check your saved thoughts. Please refresh and try again.')
+      return
+    }
+    setPendingCount((data ?? []).filter((capture) => dateKey(capture.created_at) === today).length)
+  }, [demoMode, session?.user.id])
+
+  useEffect(() => {
+    void refreshPendingCount()
+  }, [refreshPendingCount])
+
+  useEffect(() => {
+    const userId = session?.user.id ?? ''
+    if (demoMode || !userId) return
     let active = true
-    async function loadPendingCount() {
-      if (demoMode) {
-        try {
-          setPendingCount(getDemoPendingCount())
-          setEmailEnabled(getDemoSettings().email_enabled)
-        } catch (error) {
-          console.error('Unable to load local demo captures:', error)
-          setResearchError('Couldn’t load local demo data. Check browser storage and try again.')
-        }
-        return
-      }
-      if (!supabase) return
-      const { data: settings, error: settingsError } = await supabase.from('settings')
-        .select('timezone,email_enabled')
-        .maybeSingle()
-      if (settingsError) {
-        console.error('Settings timezone lookup failed:', settingsError.message)
-        if (active) setResearchError('Couldn’t check your saved thoughts. Please refresh and try again.')
-        return
-      }
-      if (active) setEmailEnabled(settings?.email_enabled ?? true)
-      const timezone = settings?.timezone ?? 'Africa/Lagos'
-      const dateParts = new Intl.DateTimeFormat('en-US', {
-        timeZone: timezone,
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).formatToParts(new Date())
-      const dateValues = Object.fromEntries(dateParts.map((part) => [part.type, part.value]))
-      const today = `${dateValues.year}-${dateValues.month}-${dateValues.day}`
-      const { data, error } = await supabase.from('captures')
-        .select('created_at')
-        .eq('status', 'pending')
-      if (!active) return
-      if (error) {
-        console.error('Pending capture count failed:', error.message)
-        setResearchError('Couldn’t check your saved thoughts. Please refresh and try again.')
-      } else {
-        const dateFormatter = new Intl.DateTimeFormat('en-US', {
-          timeZone: timezone,
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        })
-        setPendingCount((data ?? []).filter((capture) => {
-          const parts = dateFormatter.formatToParts(new Date(capture.created_at))
-          const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
-          return `${values.year}-${values.month}-${values.day}` === today
-        }).length)
+    async function sync() {
+      try {
+        await syncOfflineCaptures(userId)
+        if (active) await refreshPendingCount()
+      } catch (error) {
+        console.error('Offline captures could not be synced:', error)
+        if (active && navigator.onLine) setMessage('Your thought is saved on this device and will sync when the connection is stable.')
       }
     }
-    void loadPendingCount()
-    return () => { active = false }
-  }, [demoMode])
+    const handleOnline = () => { void sync() }
+    const handleQueueChange = (event: Event) => {
+      if ((event as CustomEvent<{ userId: string }>).detail?.userId === userId) void refreshPendingCount()
+    }
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('seema-offline-captures-changed', handleQueueChange)
+    if (navigator.onLine) void sync()
+    return () => {
+      active = false
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('seema-offline-captures-changed', handleQueueChange)
+    }
+  }, [demoMode, refreshPendingCount, session?.user.id])
 
   async function capture(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -106,21 +152,34 @@ export default function CapturePage() {
       }
       return
     }
-    if (!supabase) return
-    const { error } = await supabase.from('captures').insert({ text: captureText })
-    if (error) {
+    if (!supabase || !session?.user.id) {
       setStatus('error')
-      setMessage('That didn’t save. Check your connection and try again.')
-      console.error('Capture insert failed:', error.message)
+      setMessage('Your sign-in session is unavailable. Sign in again before saving.')
+      return
+    }
+    try {
+      saveOfflineCapture(session.user.id, captureText)
+    } catch (error) {
+      setStatus('error')
+      setMessage('That didn’t save. Check browser storage and try again.')
+      console.error('Local capture save failed:', error)
       return
     }
     setText('')
-    setPendingCount((count) => count + 1)
     setResearchError('')
     setStatus('sent')
-    setMessage('Saved for later.')
-    window.setTimeout(() => setStatus('idle'), 2600)
+    setMessage('Saved on this device. It will sync when you’re connected.')
     inputRef.current?.focus()
+    if (navigator.onLine) {
+      try {
+        const remaining = await syncOfflineCaptures(session.user.id)
+        setMessage(remaining === 0 ? 'Saved and synced.' : 'Saved on this device. It will sync when you’re connected.')
+      } catch (error) {
+        console.error('Capture sync failed after local save:', error)
+      }
+    }
+    await refreshPendingCount()
+    window.setTimeout(() => setStatus('idle'), 2600)
   }
 
   async function researchNow() {
@@ -148,6 +207,10 @@ export default function CapturePage() {
       return
     }
     if (!supabase || researching) return
+    if (!navigator.onLine) {
+      setResearchError('You’re offline. Your saved thoughts will sync when you reconnect.')
+      return
+    }
     setResearching(true)
     setResearchError('')
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
@@ -155,6 +218,20 @@ export default function CapturePage() {
       setResearching(false)
       setResearchError('Your sign-in session expired. Please sign in again.')
       if (sessionError) console.error('Unable to get session for research:', sessionError.message)
+      return
+    }
+    try {
+      const remaining = await syncOfflineCaptures(session.user.id)
+      if (remaining > 0) {
+        await refreshPendingCount()
+        setResearching(false)
+        setResearchError('Some saved thoughts are still waiting to sync. Please try again when your connection is stable.')
+        return
+      }
+    } catch (syncError) {
+      console.error('Saved thoughts could not be synced before research:', syncError)
+      setResearching(false)
+      setResearchError('Some saved thoughts are still waiting to sync. Please try again when your connection is stable.')
       return
     }
 
@@ -228,13 +305,13 @@ export default function CapturePage() {
           </div>
           <p className={`save-status ${status === 'error' ? 'error-text' : ''}`} role="status">{message}</p>
         </form>
-        {pendingCount > 0 && (
+        {pendingCount + offlineCount > 0 && (
           <div className="research-now">
-            <button className="research-now-button" type="button" onClick={researchNow} disabled={researching}>
+            <button className="research-now-button" type="button" onClick={researchNow} disabled={researching || (!demoMode && !isOnline)}>
               {researching ? <span className="button-spinner" /> : <Sparkles size={16} />}
-              {demoMode ? 'Preview saved thoughts' : researching ? 'Looking into it…' : `Research ${pendingCount} saved ${pendingCount === 1 ? 'thought' : 'thoughts'} now`}
+              {demoMode ? 'Preview saved thoughts' : researching ? 'Looking into it…' : !isOnline ? `${pendingCount + offlineCount} saved ${pendingCount + offlineCount === 1 ? 'thought' : 'thoughts'} waiting to sync` : `Research ${pendingCount + offlineCount} saved ${pendingCount + offlineCount === 1 ? 'thought' : 'thoughts'} now`}
             </button>
-            <p>{demoMode ? 'Creates a local preview only. No live research or email is sent.' : 'Your digest will open here. The email still arrives at your usual time.'}</p>
+            <p>{demoMode ? 'Creates a local preview only. No live research or email is sent.' : !isOnline ? 'Research will be available after these thoughts sync.' : 'Your digest will open here. The email still arrives at your usual time.'}</p>
           </div>
         )}
         {researchError && <p className="form-error research-feedback" role="alert">{researchError}</p>}

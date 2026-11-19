@@ -1,4 +1,4 @@
-import type { Capture, Digest, UserSettings } from './types'
+import type { Capture, CaptureFollowUp, Digest, UserSettings } from './types'
 
 const STORAGE_KEY = 'seema-local-demo-v1'
 
@@ -7,6 +7,8 @@ interface DemoState {
   digests: Digest[]
   settings: UserSettings
   suggestions: string[]
+  followUps: CaptureFollowUp[]
+  followUpCounts: Record<string, number>
 }
 
 const DEFAULT_SETTINGS: UserSettings = {
@@ -27,6 +29,8 @@ function seedState(): DemoState {
     settings: { ...DEFAULT_SETTINGS },
     captures: [],
     suggestions: [],
+    followUps: [],
+    followUpCounts: {},
     digests: [{
       id: 'local-demo-digest',
       digest_date: digestDate,
@@ -75,6 +79,10 @@ function readState(): DemoState {
     digests: Array.isArray(parsed.digests) ? parsed.digests : [],
     settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
     suggestions: Array.isArray(parsed.suggestions) ? parsed.suggestions : [],
+    followUps: Array.isArray(parsed.followUps) ? parsed.followUps : [],
+    followUpCounts: parsed.followUpCounts && typeof parsed.followUpCounts === 'object'
+      ? parsed.followUpCounts
+      : {},
   }
 }
 
@@ -92,6 +100,60 @@ export function getDemoQueueCaptures() {
 
 export function getDemoResearchedCaptures() {
   return readState().captures.filter((capture) => capture.status === 'researched')
+}
+
+export function deleteDemoCapture(id: string) {
+  const state = readState()
+  state.captures = state.captures.filter((capture) => capture.id !== id)
+  state.followUps = state.followUps.filter((followUp) => followUp.capture_id !== id)
+  delete state.followUpCounts[id]
+  state.digests = state.digests.map((digest) => ({
+    ...digest,
+    content: digest.content.filter((capture) => capture.id !== id),
+  }))
+  writeState(state)
+}
+
+export function getDemoCapture(id: string) {
+  const state = readState()
+  const standalone = state.captures.find((capture) => capture.id === id)
+  if (standalone) return standalone
+  for (const digest of state.digests) {
+    const capture = digest.content.find((item) => item.id === id)
+    if (capture) return capture
+  }
+  return null
+}
+
+export function getDemoFollowUps(captureId: string) {
+  return readState().followUps.filter((followUp) => followUp.capture_id === captureId)
+}
+
+export function getDemoFollowUpCount(captureId: string) {
+  return readState().followUpCounts[captureId] ?? 0
+}
+
+export function saveDemoFollowUp(captureId: string, question: string, answer: string) {
+  const state = readState()
+  const count = state.followUpCounts[captureId] ?? 0
+  if (count >= 10) throw new Error('You’ve reached the 10-question limit for this capture')
+  const followUp: CaptureFollowUp = {
+    id: crypto.randomUUID(),
+    capture_id: captureId,
+    question,
+    answer,
+    created_at: new Date().toISOString(),
+  }
+  state.followUps.push(followUp)
+  state.followUpCounts[captureId] = count + 1
+  writeState(state)
+  return followUp
+}
+
+export function deleteDemoFollowUp(id: string) {
+  const state = readState()
+  state.followUps = state.followUps.filter((followUp) => followUp.id !== id)
+  writeState(state)
 }
 
 export function researchDemoCapture(id: string) {

@@ -36,7 +36,7 @@ npx supabase db push
 
 `20261115090000_disable_supabase_cron.sql` disables the old Supabase `pg_cron` dispatcher, so it does not continue calling the retired Edge Functions. Apply this migration **before enabling the replacement external schedule** to avoid duplicate digest emails. The existing schema migration creates the tables and owner-scoped RLS policies.
 
-`20261117103000_email_preferences_and_suggestions.sql` adds the per-user email opt-out and the RLS-protected suggestions table. Apply this migration to the linked remote project before deploying code that reads `email_enabled` or submits suggestions. Suggestions can be reviewed from the Supabase Dashboard; users can submit only their own and cannot read other submissions.
+`20261117103000_email_preferences_and_suggestions.sql` adds the per-user email opt-out and the RLS-protected suggestions table. `20261119180000_digest_followups_and_history_delete.sql` and `20261119220000_followups_per_capture.sql` add per-capture discussions, a database-enforced limit of 10 questions per capture, and owner-only delete policies for history and discussion turns. Apply all migrations to the linked remote project before deploying code that uses these features. Suggestions can be reviewed from the Supabase Dashboard; users can submit only their own and cannot read other submissions.
 
 Create a Supabase **secret API key** in Project Settings → API Keys. It is a backend credential, not a browser key.
 
@@ -95,14 +95,15 @@ Set its `Authorization` header to `Bearer <the same CRON_SECRET from Vercel>` an
 
 ## Product notes
 
-- The PWA shell is cached for quick opens; capture submission requires a network connection.
+- The PWA shell is cached for quick opens. Signed-in users can save captures offline; they are stored in that browser under the signed-in user and sync to Supabase when a connection returns. Keep the app's local browser storage to preserve any captures that have not synced yet.
 - Android Share Target prefills the capture field.
-- The History page lists researched topics in pages of 25, supports searching, and includes standalone results as well as digest entries. `/topics` redirects to `/history`.
+- The History page lists researched topics in pages of 25, supports searching and deleting saved topics, and includes standalone results as well as digest entries. `/topics` redirects to `/history`.
 - A light/dark appearance preference is available in Settings and saved in the current browser.
 - The Queue page keeps pending thoughts available across visits and lets each thought be researched independently through the authenticated `/api/research-capture` endpoint. Standalone results appear in History.
 - Digests are the email-oriented daily bundle. They are paginated 20 at a time and are hidden from users who opt out of email; those users can research captures into History directly. Existing digest data is retained.
 - At the configured local time, the scheduler researches only that local day's pending captures saved before the cutoff. Email-enabled users receive a dated digest; users who opted out get standalone History entries instead. Captures saved afterward are handled the next day, while older pending captures remain in Queue for individual research. The scheduler retries older ready digests that have not been emailed, sending their saved content rather than rebuilding them from newer captures. The external scheduler must call `/api/cron/run-daily` every 15 minutes.
 - “Research … now” researches today's pending captures and opens the results immediately. Email-enabled users see a digest; users who opted out see their individual results in History.
+- Each researched capture can be discussed on its own page, linked from History, capture results, and digest topics. Suggested or custom questions are answered using only that capture's saved explanation and sources (no new search or open-ended context); each capture allows at most 10 questions. Discussion turns can be deleted without resetting the question limit.
 - Research is limited to three captures at a time to avoid exhausting provider quotas and function resources.
 - Tavily supplies search results; Gemini uses their snippets to write explanations. Resource links are always mapped to Tavily-returned URLs.
 - The scheduled function researches the current local day's eligible captures, sends one email digest, and reminds unopened digests after 24 hours.

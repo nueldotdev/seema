@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowUpRight, CircleAlert } from 'lucide-react'
+import { ArrowUpRight, CircleAlert, MessageCircleQuestion } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import { supabase } from '../lib/supabase'
@@ -35,7 +35,11 @@ export default function DigestPage() {
         return
       }
       if (!supabase || !id) return
-      const { data, error: queryError } = await supabase.from('digests').select('id,digest_date,content,created_at,emailed_at,opened_at,reminder_sent_at').eq('id', id).eq('status', 'ready').single()
+      const { data, error: queryError } = await supabase.from('digests')
+        .select('id,digest_date,content,created_at,emailed_at,opened_at,reminder_sent_at')
+        .eq('id', id)
+        .eq('status', 'ready')
+        .single()
       if (!active) return
       if (queryError) {
         setError('This digest couldn’t be found.')
@@ -44,7 +48,10 @@ export default function DigestPage() {
         const digestData = data as Digest
         setDigest(digestData)
         if (!digestData.opened_at) {
-          const { error: updateError } = await supabase.from('digests').update({ opened_at: new Date().toISOString() }).eq('id', id).is('opened_at', null)
+          const { error: updateError } = await supabase.from('digests')
+            .update({ opened_at: new Date().toISOString() })
+            .eq('id', id)
+            .is('opened_at', null)
           if (updateError) {
             setError('Digest opened, but its read status could not be saved.')
             console.error('Digest open tracking failed:', updateError.message)
@@ -89,6 +96,11 @@ export default function DigestPage() {
                 )}
                 {item.result.self_test && <div className="self-test"><span>Try this</span><p>{item.result.self_test}</p></div>}
               </>
+            )}
+            {item.result?.explanation && (
+              <Link className="topic-discuss-button digest-discuss-button" to={`/captures/${item.id}/discuss`}>
+                <MessageCircleQuestion size={15} /> Discuss this topic
+              </Link>
             )}
             {index < items.length - 1 && <div className="topic-divider" />}
           </section>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ArrowUpRight, CircleAlert, LoaderCircle, Sparkles } from 'lucide-react'
+import { ArrowUpRight, CircleAlert, LoaderCircle, MessageCircleQuestion, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import { supabase } from '../lib/supabase'
@@ -161,6 +161,9 @@ export default function QueuePage() {
                       </a>
                     ))}
                     {capture.result?.self_test && <p className="queue-self-test"><strong>Try this:</strong> {capture.result.self_test}</p>}
+                    <Link className="queue-discuss-link" to={`/captures/${capture.id}/discuss`}>
+                      <MessageCircleQuestion size={15} /> Discuss this topic
+                    </Link>
                   </div>
                 </article>
               ))}

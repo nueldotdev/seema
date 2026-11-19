@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ArrowUpRight, ChevronDown, Search } from 'lucide-react'
+import { ArrowUpRight, ChevronDown, MessageCircleQuestion, Search, Trash2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import AppHeader from '../components/AppHeader'
 import { supabase } from '../lib/supabase'
 import type { Capture } from '../lib/types'
 import { useAuth } from '../lib/AuthContext'
-import { getDemoDigests, getDemoResearchedCaptures, getDemoSettings } from '../lib/demo'
+import { deleteDemoCapture, getDemoDigests, getDemoResearchedCaptures, getDemoSettings } from '../lib/demo'
 
 const PAGE_SIZE = 25
 
@@ -55,6 +55,7 @@ export default function HistoryPage() {
   const [totalCount, setTotalCount] = useState(0)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [emailEnabled, setEmailEnabled] = useState(false)
+  const [deletingTopicId, setDeletingTopicId] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -152,6 +153,39 @@ export default function HistoryPage() {
     setLoadingMore(false)
   }
 
+  async function deleteTopic(topic: HistoryEntry) {
+    if (deletingTopicId) return
+    if (!window.confirm('Delete this saved topic from your history?')) return
+    setDeletingTopicId(topic.id)
+    setError('')
+    if (demoMode) {
+      try {
+        deleteDemoCapture(topic.id)
+        setTopics((current) => current.filter((item) => item.id !== topic.id))
+        setTotalCount((count) => Math.max(0, count - 1))
+      } catch (deleteError) {
+        console.error('Local history delete failed:', deleteError)
+        setError('This topic could not be deleted. Please try again.')
+      }
+      setDeletingTopicId(null)
+      return
+    }
+    if (!supabase) {
+      setError('History is unavailable because the app is not configured.')
+      setDeletingTopicId(null)
+      return
+    }
+    const { error: deleteError } = await supabase.from('captures').delete().eq('id', topic.id)
+    if (deleteError) {
+      console.error('History capture delete failed:', deleteError.message)
+      setError('This topic could not be deleted. Please try again.')
+    } else {
+      setTopics((current) => current.filter((item) => item.id !== topic.id))
+      setTotalCount((count) => Math.max(0, count - 1))
+    }
+    setDeletingTopicId(null)
+  }
+
   const visibleTopics = useMemo(
     () => demoMode ? topics.slice(0, visibleCount) : topics,
     [demoMode, topics, visibleCount],
@@ -227,6 +261,20 @@ export default function HistoryPage() {
                             {topic.result.self_test && <div className="self-test"><span>Try this</span><p>{topic.result.self_test}</p></div>}
                           </>
                         )}
+                        <div className="topic-actions">
+                          {topic.result?.explanation && <Link className="topic-discuss-button" to={`/captures/${topic.id}/discuss`}>
+                            <MessageCircleQuestion size={15} /> Discuss this topic
+                          </Link>}
+                          <button
+                            className="history-delete-button"
+                            type="button"
+                            disabled={deletingTopicId === topic.id}
+                            onClick={() => void deleteTopic(topic)}
+                          >
+                            <Trash2 size={14} />
+                            {deletingTopicId === topic.id ? 'Deleting…' : 'Delete from history'}
+                          </button>
+                        </div>
                         {emailEnabled && topic.digestId && <Link className="topic-digest-link" to={`/digests/${topic.digestId}`}>Open full digest <ArrowUpRight size={15} /></Link>}
                       </div>
                     </div>

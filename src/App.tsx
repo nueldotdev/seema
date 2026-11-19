@@ -9,6 +9,7 @@ import SettingsPage from './pages/SettingsPage'
 import LandingPage from './pages/LandingPage'
 import QueuePage from './pages/QueuePage'
 import HistoryPage from './pages/HistoryPage'
+import DiscussPage from './pages/DiscussPage'
 import DigestEmailGate from './components/DigestEmailGate'
 
 function AppRoutes() {
@@ -23,6 +24,7 @@ function AppRoutes() {
         <Route path="/digests/:id" element={<DigestEmailGate><DigestPage /></DigestEmailGate>} />
         <Route path="/queue" element={<QueuePage />} />
         <Route path="/history" element={<HistoryPage />} />
+        <Route path="/captures/:id/discuss" element={<DiscussPage />} />
         <Route path="/topics" element={<Navigate to="/history" replace />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -60,6 +62,7 @@ function AppRoutes() {
       <Route path="/digests/:id" element={<DigestEmailGate><DigestPage /></DigestEmailGate>} />
       <Route path="/queue" element={<QueuePage />} />
       <Route path="/history" element={<HistoryPage />} />
+      <Route path="/captures/:id/discuss" element={<DiscussPage />} />
       <Route path="/topics" element={<Navigate to="/history" replace />} />
       <Route path="/settings" element={<SettingsPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />
