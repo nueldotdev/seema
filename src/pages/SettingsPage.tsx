@@ -214,7 +214,7 @@ export default function SettingsPage() {
             <textarea
               id="suggestion"
               rows={4}
-              maxLength={4}
+              maxLength={1500}
               value={suggestion}
               onChange={(event) => setSuggestion(event.target.value)}
               placeholder="Share a feature idea or something we could improve…"
